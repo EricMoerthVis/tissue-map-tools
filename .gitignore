@@ -3,4 +3,4 @@ dist
 .venv
 uv.lock
 .idea
-src/tissue_map_tools/
+src/tissue_map_tools/__pycache__
