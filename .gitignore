@@ -1,0 +1,6 @@
+test-tmt
+dist
+.venv
+uv.lock
+.idea
+src/tissue_map_tools/
