@@ -13,13 +13,13 @@ import requests
 import ome_types
 
 
-def stats(arr):
+def stats(array):
     """
     Internal function to calculate statistics from a given 3D Array
 
     Parameters
     ----------
-    arr : the 3D numpy array
+    array : the 3D numpy array
 
     Returns
     -------
@@ -29,6 +29,7 @@ def stats(arr):
     --------
     >>> stats(arr)
     """
+    arr = array[array != 0]
     min_val = np.min(arr)
     max_val = np.max(arr)
     return map(float, (
@@ -48,7 +49,7 @@ def stats(arr):
     ))
 
 
-def sub_volume_analysis(mask_path, raw_path, csv_out, mask_generation_res='0'):
+def sub_volume_analysis(mask_path, raw_path, ome_xml_path, csv_out, mask_generation_res='0'):
     """
     Performing sub volume analysis for the given segmentation mask and the raw original volume
 
@@ -67,12 +68,12 @@ def sub_volume_analysis(mask_path, raw_path, csv_out, mask_generation_res='0'):
     store = root.store
     data = zarr.open(store).get('0')
 
-    root_data = parse_url(raw_path + "/0", mode="w")
+    root_data = parse_url(raw_path, mode="w")
     store_data = root_data.store
     data_raw = zarr.open(store_data).get(
         mask_generation_res)  # depends on the resolution at which the masks were generated
 
-    response = requests.get(raw_path + "/OME/METADATA.ome.xml")
+    response = requests.get(ome_xml_path)
     ome_xml = ome_types.from_xml(response.text.replace("Â", ""))
     channel_names = [c.name for c in ome_xml.images[0].pixels.channels]
 
@@ -105,7 +106,7 @@ def sub_volume_analysis(mask_path, raw_path, csv_out, mask_generation_res='0'):
         columns.append(str(channel) + "_kurtosis")
 
     # Getting the bricks for each mask
-    print("Initialising the Mesh Creation")
+    print("Initialising the Statistics Calcuation")
     mask_to_brick = _calc_mask_to_brick(data)
     chunk_shape = data.chunks
 
