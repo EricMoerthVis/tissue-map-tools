@@ -28,7 +28,9 @@ tmt.get_meshes("http://address_of_hosted_zarr_segmentation_mask", "/path_to_outp
 
 tmt.sub_volume_analysis("http://address_of_hosted_zarr_segmentation_mask",
                     "http://address_of_hosted_raw_volume",
-                    "/path_to_output/meshes/stats_entity_name.csv", mask_generation_res='0')
+                    ome_xml_path="http://address_of_hosted_ome_xml_file",
+                    csv_out="/path_to_output/meshes/stats_entity_name.csv", mask_generation_res='0')
+
 ```
 
 
