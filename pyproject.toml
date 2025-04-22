@@ -8,6 +8,9 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "zmesh>=1.0.0",
+    "trimesh",
+    "pyfqmr",
     "anywidget>=0.9.18",
     "connected-components-3d>=3.23.0",
     "fast-simplification>=0.1.9",
