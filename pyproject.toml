@@ -27,6 +27,7 @@ dependencies = [
     "trame-jupyter-extension>=2.1.4",
     "watchfiles>=1.0.5",
     "zarr>=2.18.7",
+    "dirhash>=0.5.0",
 ]
 
 [build-system]

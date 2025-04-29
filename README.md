@@ -35,7 +35,14 @@ tmt.sub_volume_analysis("http://address_of_hosted_zarr_segmentation_mask",
 
 
 ## development
+Editable install
+```sh
+uv venv
+source .venv/bin/activate
+uv sync
+```
 
+Building the package
 ```sh
 uv build
 ```
