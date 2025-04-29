@@ -10,13 +10,11 @@ import os.path as path
 import requests
 import ome_types
 import numpy as np
-import json
 from pathlib import Path
 import trimesh
 import pyfqmr
 import os
-import shutil
-import mesh_util
+import urllib.parse
 from trimesh.intersections import slice_faces_plane
 import subprocess
 
@@ -81,8 +79,17 @@ def sub_volume_analysis(mask_path, raw_path, ome_xml_path, csv_out, mask_generat
     data_raw = zarr.open(store_data).get(
         mask_generation_res)  # depends on the resolution at which the masks were generated
 
-    response = requests.get(ome_xml_path)
-    ome_xml = ome_types.from_xml(response.text.replace("Â", ""))
+
+    parsed = urllib.parse.urlparse(ome_xml_path)
+    if parsed.scheme == '':
+        # local file
+        with open(ome_xml_path, 'r') as file:
+            content = file.read()
+    else:
+        # remote file
+        response = requests.get(ome_xml_path)
+        content = response.text.replace("Â", "")
+    ome_xml = ome_types.from_xml(content)
     channel_names = [c.name for c in ome_xml.images[0].pixels.channels]
 
     # Read the csv file and get the already worked IDs
@@ -240,7 +247,7 @@ def get_meshes(mask_path, out_path, csv_out, entity_name, smoothing=0, test=Fals
         os.makedirs(out_path)
 
     # Accessing the data as store:
-    root = parse_url(mask_path, mode="w")
+    root = parse_url(mask_path, mode="r")
     store = root.store
     data = zarr.open(store).get('0')
 
@@ -798,5 +805,6 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
     print("\r", "done", end="")
 
 
-get_meshes_ng("http://127.0.0.1:8080", "/Users/ericmoerth/ws/tissue-map-tools/out",
+if __name__ == '__main__':
+    get_meshes_ng("http://127.0.0.1:8080", "/Users/ericmoerth/ws/tissue-map-tools/out",
               "/Users/ericmoerth/ws/tissue-map-tools/out/out.csv", "gloms", 10, True)
