@@ -38,24 +38,29 @@ def stats(array):
     arr = array[array != 0]
     min_val = np.min(arr)
     max_val = np.max(arr)
-    return map(float, (
-        np.mean(arr),
-        np.std(arr),
-        np.min(arr),
-        np.max(arr),
-        np.sum(arr),
-        max_val - min_val,
-        np.percentile(arr, 5),
-        np.percentile(arr, 25),
-        np.percentile(arr, 50),
-        np.percentile(arr, 75),
-        np.percentile(arr, 95),
-        scipy.stats.skew(arr.flatten()),
-        scipy.stats.kurtosis(arr.flatten()),
-    ))
+    return map(
+        float,
+        (
+            np.mean(arr),
+            np.std(arr),
+            np.min(arr),
+            np.max(arr),
+            np.sum(arr),
+            max_val - min_val,
+            np.percentile(arr, 5),
+            np.percentile(arr, 25),
+            np.percentile(arr, 50),
+            np.percentile(arr, 75),
+            np.percentile(arr, 95),
+            scipy.stats.skew(arr.flatten()),
+            scipy.stats.kurtosis(arr.flatten()),
+        ),
+    )
 
 
-def sub_volume_analysis(mask_path, raw_path, ome_xml_path, csv_out, mask_generation_res='0'):
+def sub_volume_analysis(
+    mask_path, raw_path, ome_xml_path, csv_out, mask_generation_res="0"
+):
     """
     Performing sub volume analysis for the given segmentation mask and the raw original volume
 
@@ -72,18 +77,18 @@ def sub_volume_analysis(mask_path, raw_path, ome_xml_path, csv_out, mask_generat
     """
     root = parse_url(mask_path, mode="w")
     store = root.store
-    data = zarr.open(store).get('0')
+    data = zarr.open(store).get("0")
 
     root_data = parse_url(raw_path, mode="w")
     store_data = root_data.store
     data_raw = zarr.open(store_data).get(
-        mask_generation_res)  # depends on the resolution at which the masks were generated
-
+        mask_generation_res
+    )  # depends on the resolution at which the masks were generated
 
     parsed = urllib.parse.urlparse(ome_xml_path)
-    if parsed.scheme == '':
+    if parsed.scheme == "":
         # local file
-        with open(ome_xml_path, 'r') as file:
+        with open(ome_xml_path, "r") as file:
             content = file.read()
     else:
         # remote file
@@ -97,9 +102,9 @@ def sub_volume_analysis(mask_path, raw_path, ome_xml_path, csv_out, mask_generat
     dataOut = []
     if path.exists(csv_out):
         df = pd.read_csv(csv_out)
-        df['id'] = df['id'].astype(int)  # Ensure column A is integer
-        worked_ids = list(df['id'])
-        dataOut = df.to_numpy(dtype='object').tolist()
+        df["id"] = df["id"].astype(int)  # Ensure column A is integer
+        worked_ids = list(df["id"])
+        dataOut = df.to_numpy(dtype="object").tolist()
 
     chunk_shape = data.chunks
     columns = ["id", "voxels", "chunk_keys"]
@@ -128,7 +133,7 @@ def sub_volume_analysis(mask_path, raw_path, ome_xml_path, csv_out, mask_generat
     i = 0
     for _key in mask_to_brick:
         i = i + 1
-        if (_key not in worked_ids):
+        if _key not in worked_ids:
             b = str(i) + "/" + str(len(mask_to_brick))
             print("\r", b, end="")
             # print(_key, mask_to_brick[_key])
@@ -138,10 +143,14 @@ def sub_volume_analysis(mask_path, raw_path, ome_xml_path, csv_out, mask_generat
             # Loop over each chunk key to calculate start and end coordinates
             for key in chunk_keys:
                 # Parse the chunk indices from the chunk key
-                chunk_indices = tuple(map(int, key.split('.')))
+                chunk_indices = tuple(map(int, key.split(".")))
                 # Calculate the start and end coordinates for each dimension
-                start_coords = [index * size for index, size in zip(chunk_indices, chunk_shape)]
-                end_coords = [start + size for start, size in zip(start_coords, chunk_shape)]
+                start_coords = [
+                    index * size for index, size in zip(chunk_indices, chunk_shape)
+                ]
+                end_coords = [
+                    start + size for start, size in zip(start_coords, chunk_shape)
+                ]
                 # Append to lists
                 all_start_coords.append(start_coords)
                 all_end_coords.append(end_coords)
@@ -152,14 +161,20 @@ def sub_volume_analysis(mask_path, raw_path, ome_xml_path, csv_out, mask_generat
 
             try:
                 # Create the slices for combined selection
-                combined_slices = tuple(slice(start, end) for start, end in zip(combined_start, combined_end))
+                combined_slices = tuple(
+                    slice(start, end)
+                    for start, end in zip(combined_start, combined_end)
+                )
                 # Retrieve the data for the combined region
                 combined_data = data.get_basic_selection(combined_slices)[0, 0, :, :, :]
                 mask = np.where(combined_data == _key, 1, 0)
 
                 ## For all Channels get the original data:
                 combined_end[1] = len(channel_names)
-                combined_slices = tuple(slice(start, end) for start, end in zip(combined_start, combined_end))
+                combined_slices = tuple(
+                    slice(start, end)
+                    for start, end in zip(combined_start, combined_end)
+                )
                 rawData = data_raw.get_basic_selection(combined_slices)[0, :, :, :, :]
 
                 out = [int(_key), int(np.count_nonzero(mask)), chunk_keys]
@@ -249,7 +264,7 @@ def get_meshes(mask_path, out_path, csv_out, entity_name, smoothing=0, test=Fals
     # Accessing the data as store:
     root = parse_url(mask_path, mode="r")
     store = root.store
-    data = zarr.open(store).get('0')
+    data = zarr.open(store).get("0")
 
     print("Initialising the Mesh Creation")
     # Getting the bricks for each mask
@@ -272,10 +287,14 @@ def get_meshes(mask_path, out_path, csv_out, entity_name, smoothing=0, test=Fals
         # Loop over each chunk key to calculate start and end coordinates
         for key in chunk_keys:
             # Parse the chunk indices from the chunk key
-            chunk_indices = tuple(map(int, key.split('.')))
+            chunk_indices = tuple(map(int, key.split(".")))
             # Calculate the start and end coordinates for each dimension
-            start_coords = [index * size for index, size in zip(chunk_indices, chunk_shape)]
-            end_coords = [start + size for start, size in zip(start_coords, chunk_shape)]
+            start_coords = [
+                index * size for index, size in zip(chunk_indices, chunk_shape)
+            ]
+            end_coords = [
+                start + size for start, size in zip(start_coords, chunk_shape)
+            ]
             # Append to lists
             all_start_coords.append(start_coords)
             all_end_coords.append(end_coords)
@@ -283,31 +302,48 @@ def get_meshes(mask_path, out_path, csv_out, entity_name, smoothing=0, test=Fals
         # Find the minimum start and maximum end coordinates across all chunks
         combined_start = [min(coords) for coords in zip(*all_start_coords)]
         combined_end = [max(coords) for coords in zip(*all_end_coords)]
-        combined_slices = tuple(slice(start, end) for start, end in zip(combined_start, combined_end))
+        combined_slices = tuple(
+            slice(start, end) for start, end in zip(combined_start, combined_end)
+        )
         combined_data = data.get_basic_selection(combined_slices)[0, 0, :, :, :]
-        combined_data = np.pad(combined_data, ((1, 1), (1, 1), (1, 1)), mode='constant', constant_values=0)
+        combined_data = np.pad(
+            combined_data, ((1, 1), (1, 1), (1, 1)), mode="constant", constant_values=0
+        )
         mask = np.where(combined_data == _key, 1, 0)
 
         try:
             v2, f2, n2, values2 = measure.marching_cubes(volume=mask)
 
-            new_obj = open(out_path + "/" + str(entity_name) + "_" + str(_key) + '.obj', 'w')
+            new_obj = open(
+                out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj", "w"
+            )
             f2 = f2 + 1
             for item in v2:
-                new_obj.write("v {0} {1} {2}\n".format(item[0] + combined_start[2], item[1] + combined_start[3],
-                                                       item[2] + combined_start[4]))
+                new_obj.write(
+                    "v {0} {1} {2}\n".format(
+                        item[0] + combined_start[2],
+                        item[1] + combined_start[3],
+                        item[2] + combined_start[4],
+                    )
+                )
             for item in n2:
                 new_obj.write("vn {0} {1} {2}\n".format(item[0], item[1], item[2]))
 
             for item in f2:
-                new_obj.write("f {0}//{0} {1}//{1} {2}//{2}\n".format(item[0], item[1], item[2]))
+                new_obj.write(
+                    "f {0}//{0} {1}//{1} {2}//{2}\n".format(item[0], item[1], item[2])
+                )
 
             new_obj.close()
 
             if smoothing > 0:
-                mesh = o3d.io.read_triangle_mesh(out_path + "/" + str(entity_name) + "_" + str(_key) + '.obj')
+                mesh = o3d.io.read_triangle_mesh(
+                    out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj"
+                )
                 mesh = mesh.filter_smooth_laplacian(number_of_iterations=smoothing)
-                o3d.io.write_triangle_mesh(out_path + "/" + str(entity_name) + "_" + str(_key) + '.obj', mesh)
+                o3d.io.write_triangle_mesh(
+                    out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj", mesh
+                )
 
             out = [int(_key), int(np.count_nonzero(mask)), chunk_keys]
             dataOut.append(out)
@@ -316,27 +352,30 @@ def get_meshes(mask_path, out_path, csv_out, entity_name, smoothing=0, test=Fals
         except:
             print("Error with", _key)
 
-        if (test):
+        if test:
             print("Ran as Test")
             break
     print("\r", "done", end="")
 
 
-''' Functions taken over from "multiresolution-mesh-creator'''
+""" Functions taken over from "multiresolution-mesh-creator"""
 
 
-def pyfqmr_decimate(vertices, faces, output_path, id, lod, decimation_factor,
-                    aggressiveness):
+def pyfqmr_decimate(
+    vertices, faces, output_path, id, lod, decimation_factor, aggressiveness
+):
     """Mesh decimation using pyfqmr."""
-    desired_faces = max(len(faces) // (decimation_factor ** lod), 4)
+    desired_faces = max(len(faces) // (decimation_factor**lod), 4)
     mesh_simplifier = pyfqmr.Simplify()
     mesh_simplifier.setMesh(vertices, faces)
     del vertices
     del faces
-    mesh_simplifier.simplify_mesh(target_count=desired_faces,
-                                  aggressiveness=aggressiveness,
-                                  preserve_border=False,
-                                  verbose=False)
+    mesh_simplifier.simplify_mesh(
+        target_count=desired_faces,
+        aggressiveness=aggressiveness,
+        preserve_border=False,
+        verbose=False,
+    )
     vertices, faces, _ = mesh_simplifier.getMesh()
     del mesh_simplifier
 
@@ -346,10 +385,10 @@ def pyfqmr_decimate(vertices, faces, output_path, id, lod, decimation_factor,
     _ = mesh.export(f"{output_path}/s{lod}/{id}.ply")
 
 
-def generate_decimated_meshes(output_path, lods, infos,
-                              decimation_factor, aggressiveness):
-    """Generate decimatated meshes for all ids in `ids`, over all lod in `lods`.
-    """
+def generate_decimated_meshes(
+    output_path, lods, infos, decimation_factor, aggressiveness
+):
+    """Generate decimatated meshes for all ids in `ids`, over all lod in `lods`."""
 
     results = []
     for current_lod in lods:
@@ -358,14 +397,20 @@ def generate_decimated_meshes(output_path, lods, infos,
             if current_lod == 0:
                 ## Write out the original ply to file
                 mesh = trimesh.Trimesh(info.get("vertices"), info.get("faces"))
-                _ = mesh.export(f"{output_path}/mesh_lods/s{current_lod}/{info.get('id')}.ply")
+                _ = mesh.export(
+                    f"{output_path}/mesh_lods/s{current_lod}/{info.get('id')}.ply"
+                )
             else:
                 # Getting the vertices and faces for the mesh
-                pyfqmr_decimate(info.get("vertices"), info.get("faces"),
-                                f"{output_path}/mesh_lods",
-                                info.get("id"), current_lod,
-                                decimation_factor,
-                                aggressiveness)
+                pyfqmr_decimate(
+                    info.get("vertices"),
+                    info.get("faces"),
+                    f"{output_path}/mesh_lods",
+                    info.get("id"),
+                    current_lod,
+                    decimation_factor,
+                    aggressiveness,
+                )
 
 
 def my_slice_faces_plane(vertices, faces, plane_normal, plane_origin):
@@ -384,8 +429,9 @@ def my_slice_faces_plane(vertices, faces, plane_normal, plane_origin):
 
     if len(vertices) > 0 and len(faces) > 0:
         try:
-            vertices, faces, uv = slice_faces_plane(vertices, faces, plane_normal,
-                                                    plane_origin)
+            vertices, faces, uv = slice_faces_plane(
+                vertices, faces, plane_normal, plane_origin
+            )
         except ValueError as e:
             if str(e) != "input must be 1D integers!":
                 raise
@@ -395,8 +441,7 @@ def my_slice_faces_plane(vertices, faces, plane_normal, plane_origin):
     return vertices, faces
 
 
-def update_fragment_dict(dictionary, fragment_pos, vertices, faces,
-                         lod_0_fragment_pos):
+def update_fragment_dict(dictionary, fragment_pos, vertices, faces, lod_0_fragment_pos):
     """Update dictionary (in place) whose keys are fragment positions and
     whose values are `Fragment` which is a class containing the corresponding
     fragment vertices, faces and corresponding lod 0 fragment positions.
@@ -424,12 +469,19 @@ def update_fragment_dict(dictionary, fragment_pos, vertices, faces,
         fragment.update(vertices, faces, lod_0_fragment_pos)
         dictionary[fragment_pos] = fragment
     else:
-        dictionary[fragment_pos] = mesh_util.Fragment(vertices, faces,
-                                                      [lod_0_fragment_pos])
+        dictionary[fragment_pos] = mesh_util.Fragment(
+            vertices, faces, [lod_0_fragment_pos]
+        )
 
 
-def _encode_mesh_draco(vertices: np.ndarray, faces: np.ndarray,
-                       bounds_min: np.ndarray, box_size: float, position_quantization_bits, temp_dir) -> bytes:
+def _encode_mesh_draco(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    bounds_min: np.ndarray,
+    box_size: float,
+    position_quantization_bits,
+    temp_dir,
+) -> bytes:
     """Encode a mesh using Google's Draco encoder with enhanced quality settings."""
     # Normalize vertices to quantization range
     vertices = vertices.copy()
@@ -442,7 +494,7 @@ def _encode_mesh_draco(vertices: np.ndarray, faces: np.ndarray,
     #
     vertices -= bounds_min
     vertices /= box_size
-    vertices *= (2 ** position_quantization_bits - 1)
+    vertices *= 2**position_quantization_bits - 1
     # vertices = vertices.astype(np.int32)
 
     # Create temporary files for the mesh
@@ -469,13 +521,20 @@ def _encode_mesh_draco(vertices: np.ndarray, faces: np.ndarray,
     # Run draco_encoder
     cmd = [
         draco_path,
-        "-i", obj_path,
-        "-o", drc_path,
-        "-qp", str(position_quantization_bits),
-        "-qt", "8",  # Higher quality tangents
-        "-qn", "8",  # Higher quality normals
-        "-qtx", "8",  # Higher quality texture coordinates
-        "-cl", "10",  # Maximum compression level
+        "-i",
+        obj_path,
+        "-o",
+        drc_path,
+        "-qp",
+        str(position_quantization_bits),
+        "-qt",
+        "8",  # Higher quality tangents
+        "-qn",
+        "8",  # Higher quality normals
+        "-qtx",
+        "8",  # Higher quality texture coordinates
+        "-cl",
+        "10",  # Maximum compression level
     ]
 
     try:
@@ -487,9 +546,15 @@ def _encode_mesh_draco(vertices: np.ndarray, faces: np.ndarray,
         raise RuntimeError(f"Draco encoding failed: {e.stdout} {e.stderr}")
 
 
-def generate_mesh_decomposition(mesh_path, lod_0_box_size, grid_origin,
-                                start_fragment, end_fragment, current_lod,
-                                num_chunks):
+def generate_mesh_decomposition(
+    mesh_path,
+    lod_0_box_size,
+    grid_origin,
+    start_fragment,
+    end_fragment,
+    current_lod,
+    num_chunks,
+):
     """Dask delayed function to decompose a mesh, provided as vertices and
     faces, into fragments of size lod_0_box_size * 2**current_lod. Each
     fragment is also subdivided by 2x2x2. This is performed over a limited
@@ -533,13 +598,11 @@ def generate_mesh_decomposition(mesh_path, lod_0_box_size, grid_origin,
         if num_chunks[dimension] > 1:
             n_d = n[dimension, :]
             plane_origin = n_d * end_fragment[dimension] * sub_box_size
-            vertices, faces = my_slice_faces_plane(vertices, faces, -n_d,
-                                                   plane_origin)
+            vertices, faces = my_slice_faces_plane(vertices, faces, -n_d, plane_origin)
             if len(vertices) == 0:
                 return None
             plane_origin = n_d * start_fragment[dimension] * sub_box_size
-            vertices, faces = my_slice_faces_plane(vertices, faces, n_d,
-                                                   plane_origin)
+            vertices, faces = my_slice_faces_plane(vertices, faces, n_d, plane_origin)
 
     if len(vertices) == 0:
         return None
@@ -548,18 +611,21 @@ def generate_mesh_decomposition(mesh_path, lod_0_box_size, grid_origin,
     # are divisible by 2x2x2 chunks
     for x in range(start_fragment[0], end_fragment[0]):
         plane_origin_yz = nyz * (x + 1) * sub_box_size
-        vertices_yz, faces_yz = my_slice_faces_plane(vertices, faces, -nyz,
-                                                     plane_origin_yz)
+        vertices_yz, faces_yz = my_slice_faces_plane(
+            vertices, faces, -nyz, plane_origin_yz
+        )
 
         for y in range(start_fragment[1], end_fragment[1]):
             plane_origin_xz = nxz * (y + 1) * sub_box_size
             vertices_xz, faces_xz = my_slice_faces_plane(
-                vertices_yz, faces_yz, -nxz, plane_origin_xz)
+                vertices_yz, faces_yz, -nxz, plane_origin_xz
+            )
 
             for z in range(start_fragment[2], end_fragment[2]):
                 plane_origin_xy = nxy * (z + 1) * sub_box_size
                 vertices_xy, faces_xy = my_slice_faces_plane(
-                    vertices_xz, faces_xz, -nxy, plane_origin_xy)
+                    vertices_xz, faces_xz, -nxy, plane_origin_xy
+                )
 
                 lod_0_fragment_position = tuple(np.array([x, y, z]))
                 if current_lod != 0:
@@ -567,23 +633,28 @@ def generate_mesh_decomposition(mesh_path, lod_0_box_size, grid_origin,
                 else:
                     fragment_position = lod_0_fragment_position
 
-                update_fragment_dict(combined_fragments_dictionary,
-                                     fragment_position, vertices_xy, faces_xy,
-                                     list(lod_0_fragment_position))
+                update_fragment_dict(
+                    combined_fragments_dictionary,
+                    fragment_position,
+                    vertices_xy,
+                    faces_xy,
+                    list(lod_0_fragment_position),
+                )
 
                 vertices_xz, faces_xz = my_slice_faces_plane(
-                    vertices_xz, faces_xz, nxy, plane_origin_xy)
+                    vertices_xz, faces_xz, nxy, plane_origin_xy
+                )
 
             vertices_yz, faces_yz = my_slice_faces_plane(
-                vertices_yz, faces_yz, nxz, plane_origin_xz)
+                vertices_yz, faces_yz, nxz, plane_origin_xz
+            )
 
-        vertices, faces = my_slice_faces_plane(vertices, faces, nyz,
-                                               plane_origin_yz)
+        vertices, faces = my_slice_faces_plane(vertices, faces, nyz, plane_origin_yz)
 
     # Return combined_fragments_dictionary
     for fragment_pos, fragment in combined_fragments_dictionary.items():
         if fragment.vertices.size > 0:
-            current_box_size = lod_0_box_size * 2 ** current_lod
+            current_box_size = lod_0_box_size * 2**current_lod
             # draco_bytes = encode_faces_to_custom_drc_bytes(
             #     fragment.vertices,
             #     np.zeros(np.shape(fragment.vertices)),
@@ -592,30 +663,36 @@ def generate_mesh_decomposition(mesh_path, lod_0_box_size, grid_origin,
             #     np.asarray(fragment_pos) * current_box_size,
             #     position_quantization_bits=10)
 
-            draco_bytes = _encode_mesh_draco(fragment.vertices, fragment.faces,
-                                             np.asarray(3 * [current_box_size]),
-                                             np.asarray(fragment_pos) * current_box_size, position_quantization_bits=10,
-                                             temp_dir=os.path.dirname(mesh_path))
+            draco_bytes = _encode_mesh_draco(
+                fragment.vertices,
+                fragment.faces,
+                np.asarray(3 * [current_box_size]),
+                np.asarray(fragment_pos) * current_box_size,
+                position_quantization_bits=10,
+                temp_dir=os.path.dirname(mesh_path),
+            )
 
             if len(draco_bytes) > 12:
                 # Then the mesh is not empty
                 fragment = mesh_util.CompressedFragment(
-                    draco_bytes, np.asarray(fragment_pos), len(draco_bytes),
-                    np.asarray(fragment.lod_0_fragment_pos))
+                    draco_bytes,
+                    np.asarray(fragment_pos),
+                    len(draco_bytes),
+                    np.asarray(fragment.lod_0_fragment_pos),
+                )
                 fragments.append(fragment)
 
     return fragments
 
 
-def generate_neuroglancer_multires_mesh(output_path, id, lods,
-                                        original_ext, lod_0_box_size):
+def generate_neuroglancer_multires_mesh(
+    output_path, id, lods, original_ext, lod_0_box_size
+):
     """function to generate multiresolution mesh in neuroglancer
     mesh format using prewritten meshes at different levels of detail.
     """
     os.makedirs(f"{output_path}/multires", exist_ok=True)
-    os.system(
-        f"rm -rf {output_path}/multires/{id} {output_path}/multires/{id}.index"
-    )
+    os.system(f"rm -rf {output_path}/multires/{id} {output_path}/multires/{id}.index")
 
     results = []
     for idx, current_lod in enumerate(lods):
@@ -627,19 +704,16 @@ def generate_neuroglancer_multires_mesh(output_path, id, lods,
         vertices, _ = mesh_util.mesh_loader(mesh_path)
 
         if vertices is not None:
-
             if current_lod == 0:
                 max_box_size = lod_0_box_size * 2 ** lods[-1]
-                grid_origin = (vertices.min(axis=0) // max_box_size -
-                               1) * max_box_size
+                grid_origin = (vertices.min(axis=0) // max_box_size - 1) * max_box_size
             vertices -= grid_origin
 
-            current_box_size = lod_0_box_size * 2 ** current_lod
+            current_box_size = lod_0_box_size * 2**current_lod
             start_fragment = np.maximum(
-                vertices.min(axis=0) // current_box_size - 1,
-                np.array([0, 0, 0])).astype(int)
-            end_fragment = (vertices.max(axis=0) // current_box_size +
-                            1).astype(int)
+                vertices.min(axis=0) // current_box_size - 1, np.array([0, 0, 0])
+            ).astype(int)
+            end_fragment = (vertices.max(axis=0) // current_box_size + 1).astype(int)
 
             del vertices
 
@@ -651,7 +725,7 @@ def generate_neuroglancer_multires_mesh(output_path, id, lods,
             # increase the number of mesh slice operations we perform, which
             # seems slow.
 
-            max_number_of_chunks = (end_fragment - start_fragment)
+            max_number_of_chunks = end_fragment - start_fragment
             dimensions_sorted = np.argsort(-max_number_of_chunks)
             num_chunks = np.array([1, 1, 1])
 
@@ -659,8 +733,9 @@ def generate_neuroglancer_multires_mesh(output_path, id, lods,
                 if num_chunks[d] < max_number_of_chunks[d]:
                     num_chunks[d] += 1
 
-            stride = np.ceil(1.0 * (end_fragment - start_fragment) /
-                             num_chunks).astype(np.int32)
+            stride = np.ceil(1.0 * (end_fragment - start_fragment) / num_chunks).astype(
+                np.int32
+            )
 
             # Scattering here, unless broadcast=True, causes this issue:
             # https://github.com/dask/distributed/issues/4612. But that is
@@ -672,17 +747,21 @@ def generate_neuroglancer_multires_mesh(output_path, id, lods,
             decomposition_results = []
             for x in range(start_fragment[0], end_fragment[0], stride[0]):
                 for y in range(start_fragment[1], end_fragment[1], stride[1]):
-                    for z in range(start_fragment[2], end_fragment[2],
-                                   stride[2]):
+                    for z in range(start_fragment[2], end_fragment[2], stride[2]):
                         current_start_fragment = np.array([x, y, z])
                         current_end_fragment = current_start_fragment + stride
                         # then we aren't parallelizing again
                         decomposition_results.append(
                             generate_mesh_decomposition(
-                                mesh_path, lod_0_box_size, grid_origin,
+                                mesh_path,
+                                lod_0_box_size,
+                                grid_origin,
                                 current_start_fragment,
-                                current_end_fragment, current_lod,
-                                num_chunks))
+                                current_end_fragment,
+                                current_lod,
+                                num_chunks,
+                            )
+                        )
 
             results = []
 
@@ -692,21 +771,27 @@ def generate_neuroglancer_multires_mesh(output_path, id, lods,
             ]
 
             fragments = [
-                fragment for fragments in decomposition_results
+                fragment
+                for fragments in decomposition_results
                 for fragment in fragments
             ]
 
             del decomposition_results
 
             mesh_util.write_mesh_files(
-                f"{output_path}/multires", f"{id}", grid_origin, fragments,
-                current_lod, lods[:idx + 1],
-                np.asarray([lod_0_box_size, lod_0_box_size, lod_0_box_size]))
+                f"{output_path}/multires",
+                f"{id}",
+                grid_origin,
+                fragments,
+                current_lod,
+                lods[: idx + 1],
+                np.asarray([lod_0_box_size, lod_0_box_size, lod_0_box_size]),
+            )
 
             del fragments
 
 
-''' END Functions'''
+""" END Functions"""
 
 
 def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=False):
@@ -735,7 +820,7 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
     # Accessing the data as store:
     root = parse_url(mask_path, mode="w")
     store = root.store
-    data = zarr.open(store).get('0')
+    data = zarr.open(store).get("0")
 
     print("Initialising the Mesh Creation")
     # Getting the bricks for each mask
@@ -758,10 +843,14 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
         # Loop over each chunk key to calculate start and end coordinates
         for key in chunk_keys:
             # Parse the chunk indices from the chunk key
-            chunk_indices = tuple(map(int, key.split('.')))
+            chunk_indices = tuple(map(int, key.split(".")))
             # Calculate the start and end coordinates for each dimension
-            start_coords = [index * size for index, size in zip(chunk_indices, chunk_shape)]
-            end_coords = [start + size for start, size in zip(start_coords, chunk_shape)]
+            start_coords = [
+                index * size for index, size in zip(chunk_indices, chunk_shape)
+            ]
+            end_coords = [
+                start + size for start, size in zip(start_coords, chunk_shape)
+            ]
             # Append to lists
             all_start_coords.append(start_coords)
             all_end_coords.append(end_coords)
@@ -769,9 +858,13 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
         # Find the minimum start and maximum end coordinates across all chunks
         combined_start = [min(coords) for coords in zip(*all_start_coords)]
         combined_end = [max(coords) for coords in zip(*all_end_coords)]
-        combined_slices = tuple(slice(start, end) for start, end in zip(combined_start, combined_end))
+        combined_slices = tuple(
+            slice(start, end) for start, end in zip(combined_start, combined_end)
+        )
         combined_data = data.get_basic_selection(combined_slices)[0, 0, :, :, :]
-        combined_data = np.pad(combined_data, ((1, 1), (1, 1), (1, 1)), mode='constant', constant_values=0)
+        combined_data = np.pad(
+            combined_data, ((1, 1), (1, 1), (1, 1)), mode="constant", constant_values=0
+        )
         mask = np.where(combined_data == _key, 1, 0)
 
         # try:
@@ -790,7 +883,13 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
 
         trimesh_mesh.fix_normals()
 
-        generate_decimated_meshes(temp_mesh_dir, list(range(3)), [{"vertices": v2, "faces": f2, "id": _key}], 4, 10)
+        generate_decimated_meshes(
+            temp_mesh_dir,
+            list(range(3)),
+            [{"vertices": v2, "faces": f2, "id": _key}],
+            4,
+            10,
+        )
         generate_neuroglancer_multires_mesh(temp_mesh_dir, 1, list(range(3)), ".ply", 8)
 
         multires_output_path = f"{temp_mesh_dir}/multires"
@@ -799,12 +898,18 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
         # except:
         #     print("Error with", _key)
 
-        if (test):
+        if test:
             print("Ran as Test")
             break
     print("\r", "done", end="")
 
 
-if __name__ == '__main__':
-    get_meshes_ng("http://127.0.0.1:8080", "/Users/ericmoerth/ws/tissue-map-tools/out",
-              "/Users/ericmoerth/ws/tissue-map-tools/out/out.csv", "gloms", 10, True)
+if __name__ == "__main__":
+    get_meshes_ng(
+        "http://127.0.0.1:8080",
+        "/Users/ericmoerth/ws/tissue-map-tools/out",
+        "/Users/ericmoerth/ws/tissue-map-tools/out/out.csv",
+        "gloms",
+        10,
+        True,
+    )
