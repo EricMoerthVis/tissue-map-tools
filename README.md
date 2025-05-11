@@ -39,10 +39,19 @@ Editable install
 ```sh
 uv venv
 source .venv/bin/activate
-uv sync
+# install with specific dependency groups
+uv sync --group examples --group dev
+# note: calling `uv sync` is equivalent to the above since 
+# `tool.uv.default-groups = ["examples", "dev"]` in `pyproject.toml`
 ```
 
-Building the package
+Adding/removing packages
+```sh
+uv add <package_name>  # --group examples
+uv remove <package_name>  # --group examples
+```
+
+Building the package for distribution
 ```sh
 uv build
 ```
