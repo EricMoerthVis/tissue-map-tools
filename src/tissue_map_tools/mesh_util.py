@@ -171,7 +171,7 @@ def rewrite_index_with_empty_fragments(path, current_lod_fragments):
     vertex_offsets, file_content = unpack_and_remove("f", num_lods * 3, file_content)
 
     num_fragments_per_lod, file_content = unpack_and_remove("I", num_lods, file_content)
-    if type(num_fragments_per_lod) == int:
+    if isinstance(num_fragments_per_lod, int):
         num_fragments_per_lod = np.array([num_fragments_per_lod])
 
     all_current_fragment_positions = []
@@ -185,7 +185,7 @@ def rewrite_index_with_empty_fragments(path, current_lod_fragments):
         fragment_offsets, file_content = unpack_and_remove(
             "I", num_fragments_per_lod[lod], file_content
         )
-        if type(fragment_offsets) == int:
+        if isinstance(fragment_offsets, int):
             fragment_offsets = np.array([fragment_offsets])
         all_current_fragment_positions.append(fragment_positions.astype(int))
         all_current_fragment_offsets.append(fragment_offsets.tolist())
