@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { name = "Eric Moerth", email = "ericmoerth@g.harvard.edu" }
+    { name = "Eric Moerth", email = "ericmoerth@g.harvard.edu" },
+    { name = "Luca Marconato", email = "luca.marconato@embl.de" }
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -27,8 +28,18 @@ dependencies = [
     "trame-jupyter-extension>=2.1.4",
     "watchfiles>=1.0.5",
     "zarr>=2.18.7",
-    "dirhash>=0.5.0",
 ]
+
+[dependency-groups]
+examples = [
+    "dirhash>=0.5.0",
+    "neuroglancer>=2.40.1",
+]
+dev = [
+]
+
+[tool.uv]
+default-groups = ["examples", "dev"]
 
 [build-system]
 requires = ["hatchling"]

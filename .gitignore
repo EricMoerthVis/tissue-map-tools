@@ -5,3 +5,4 @@ uv.lock
 .idea
 src/tissue_map_tools/__pycache__
 out/*
+.DS_Store
