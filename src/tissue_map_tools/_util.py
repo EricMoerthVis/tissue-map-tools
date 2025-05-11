@@ -17,6 +17,7 @@ import os
 import urllib.parse
 from trimesh.intersections import slice_faces_plane
 import subprocess
+from tissue_map_tools import mesh_util
 
 
 def stats(array):
@@ -159,39 +160,34 @@ def sub_volume_analysis(
             combined_start = [min(coords) for coords in zip(*all_start_coords)]
             combined_end = [max(coords) for coords in zip(*all_end_coords)]
 
-            try:
-                # Create the slices for combined selection
-                combined_slices = tuple(
-                    slice(start, end)
-                    for start, end in zip(combined_start, combined_end)
-                )
-                # Retrieve the data for the combined region
-                combined_data = data.get_basic_selection(combined_slices)[0, 0, :, :, :]
-                mask = np.where(combined_data == _key, 1, 0)
+            # Create the slices for combined selection
+            combined_slices = tuple(
+                slice(start, end) for start, end in zip(combined_start, combined_end)
+            )
+            # Retrieve the data for the combined region
+            combined_data = data.get_basic_selection(combined_slices)[0, 0, :, :, :]
+            mask = np.where(combined_data == _key, 1, 0)
 
-                ## For all Channels get the original data:
-                combined_end[1] = len(channel_names)
-                combined_slices = tuple(
-                    slice(start, end)
-                    for start, end in zip(combined_start, combined_end)
-                )
-                rawData = data_raw.get_basic_selection(combined_slices)[0, :, :, :, :]
+            # For all Channels get the original data:
+            combined_end[1] = len(channel_names)
+            combined_slices = tuple(
+                slice(start, end) for start, end in zip(combined_start, combined_end)
+            )
+            rawData = data_raw.get_basic_selection(combined_slices)[0, :, :, :, :]
 
-                out = [int(_key), int(np.count_nonzero(mask)), chunk_keys]
-                for c in ome_xml.images[0].pixels.channels:
-                    # Grab the original data
-                    channel = int(c.id.split(":")[2])
-                    channel_data = rawData[channel, :, :, :]
-                    masked = channel_data * mask
+            out = [int(_key), int(np.count_nonzero(mask)), chunk_keys]
+            for c in ome_xml.images[0].pixels.channels:
+                # Grab the original data
+                channel = int(c.id.split(":")[2])
+                channel_data = rawData[channel, :, :, :]
+                masked = channel_data * mask
 
-                    stats_out = stats(masked)
-                    out.extend([float(x) for x in list(stats_out)])
+                stats_out = stats(masked)
+                out.extend([float(x) for x in list(stats_out)])
 
-                dataOut.append(out)
-                df = pd.DataFrame(dataOut, columns=columns)
-                df.to_csv(csv_out, index=False, header=True)
-            except:
-                print("Error", _key)
+            dataOut.append(out)
+            df = pd.DataFrame(dataOut, columns=columns)
+            df.to_csv(csv_out, index=False, header=True)
     print("done")
 
 
@@ -311,46 +307,43 @@ def get_meshes(mask_path, out_path, csv_out, entity_name, smoothing=0, test=Fals
         )
         mask = np.where(combined_data == _key, 1, 0)
 
-        try:
-            v2, f2, n2, values2 = measure.marching_cubes(volume=mask)
+        v2, f2, n2, values2 = measure.marching_cubes(volume=mask)
 
-            new_obj = open(
-                out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj", "w"
+        new_obj = open(
+            out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj", "w"
+        )
+        f2 = f2 + 1
+        for item in v2:
+            new_obj.write(
+                "v {0} {1} {2}\n".format(
+                    item[0] + combined_start[2],
+                    item[1] + combined_start[3],
+                    item[2] + combined_start[4],
+                )
             )
-            f2 = f2 + 1
-            for item in v2:
-                new_obj.write(
-                    "v {0} {1} {2}\n".format(
-                        item[0] + combined_start[2],
-                        item[1] + combined_start[3],
-                        item[2] + combined_start[4],
-                    )
-                )
-            for item in n2:
-                new_obj.write("vn {0} {1} {2}\n".format(item[0], item[1], item[2]))
+        for item in n2:
+            new_obj.write("vn {0} {1} {2}\n".format(item[0], item[1], item[2]))
 
-            for item in f2:
-                new_obj.write(
-                    "f {0}//{0} {1}//{1} {2}//{2}\n".format(item[0], item[1], item[2])
-                )
+        for item in f2:
+            new_obj.write(
+                "f {0}//{0} {1}//{1} {2}//{2}\n".format(item[0], item[1], item[2])
+            )
 
-            new_obj.close()
+        new_obj.close()
 
-            if smoothing > 0:
-                mesh = o3d.io.read_triangle_mesh(
-                    out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj"
-                )
-                mesh = mesh.filter_smooth_laplacian(number_of_iterations=smoothing)
-                o3d.io.write_triangle_mesh(
-                    out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj", mesh
-                )
+        if smoothing > 0:
+            mesh = o3d.io.read_triangle_mesh(
+                out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj"
+            )
+            mesh = mesh.filter_smooth_laplacian(number_of_iterations=smoothing)
+            o3d.io.write_triangle_mesh(
+                out_path + "/" + str(entity_name) + "_" + str(_key) + ".obj", mesh
+            )
 
-            out = [int(_key), int(np.count_nonzero(mask)), chunk_keys]
-            dataOut.append(out)
-            df = pd.DataFrame(dataOut, columns=columns)
-            df.to_csv(csv_out, index=False, header=True)
-        except:
-            print("Error with", _key)
+        out = [int(_key), int(np.count_nonzero(mask)), chunk_keys]
+        dataOut.append(out)
+        df = pd.DataFrame(dataOut, columns=columns)
+        df.to_csv(csv_out, index=False, header=True)
 
         if test:
             print("Ran as Test")
@@ -390,7 +383,6 @@ def generate_decimated_meshes(
 ):
     """Generate decimatated meshes for all ids in `ids`, over all lod in `lods`."""
 
-    results = []
     for current_lod in lods:
         os.makedirs(f"{output_path}/mesh_lods/s{current_lod}", exist_ok=True)
         for info in infos:
@@ -694,7 +686,6 @@ def generate_neuroglancer_multires_mesh(
     os.makedirs(f"{output_path}/multires", exist_ok=True)
     os.system(f"rm -rf {output_path}/multires/{id} {output_path}/multires/{id}.index")
 
-    results = []
     for idx, current_lod in enumerate(lods):
         if current_lod == 0:
             mesh_path = f"{output_path}/mesh_lods/s{current_lod}/{id}{original_ext}"
@@ -763,8 +754,6 @@ def generate_neuroglancer_multires_mesh(
                             )
                         )
 
-            results = []
-
             # Remove empty slabs
             decomposition_results = [
                 fragments for fragments in decomposition_results if fragments
@@ -826,9 +815,6 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
     # Getting the bricks for each mask
     mask_to_brick = _calc_mask_to_brick(data)
     chunk_shape = data.chunks
-
-    columns = ["id", "voxels", "chunk_keys"]
-    dataOut = []
 
     print("Starting the Object Creation")
     i = 0
