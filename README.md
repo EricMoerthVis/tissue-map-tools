@@ -63,3 +63,16 @@ Building the package for distribution
 ```sh
 uv build
 ```
+
+Using `pre-commit`.
+
+```sh
+# install
+pre-commit install
+
+# pre-commit are run automatically on commit; you can run on request with
+pre-commit run --all-files
+
+# to commit without running pre-commit hooks
+git commit --no-verify
+```
