@@ -6,3 +6,4 @@ uv.lock
 src/tissue_map_tools/__pycache__
 out/*
 .DS_Store
+sandbox/*
