@@ -104,11 +104,12 @@ def from_ome_zarr_04_raster_to_precomputed(
                 "The OME-Zarr data is not of integral type, but is_labels is True."
             )
     else:
-        remove_c = (
+        is_labels = (
             "c" in axes
             and dask_data_scale0.shape[axes_index["c"]] == 1
-            and np.isdtype(dask_data_scale0.dtype, "integral")
-        )
+            or "c" not in axes
+        ) and np.isdtype(dask_data_scale0.dtype, "integral")
+        remove_c = is_labels and "c" in axes
 
     if remove_c:
         dask_data_scale0 = dask_data_scale0.squeeze(axis=axes_index["c"])
@@ -126,14 +127,16 @@ def from_ome_zarr_04_raster_to_precomputed(
         axis: round(ROUNDING_FACTOR * scale_factors[axis]) for axis in ["x", "y", "z"]
     }
 
+    layer_type = "segmentation" if is_labels else "image"
     to_cloudvolume(
         arr=transposed,
+        layer_type=layer_type,
         cloudpath=precomputed_path,
         resolution=[pixel_sizes["x"], pixel_sizes["y"], pixel_sizes["z"]],
     )
     print(
-        f"Converted OME-Zarr data from {ome_zarr_path} to the Precomputed format at "
-        f"{precomputed_path} with pixel sizes {pixel_sizes} and axes {axes_cloudvolume}."
+        f"Converted OME-Zarr data from {ome_zarr_path} to the Precomputed format ("
+        f"{layer_type}) at {precomputed_path} with pixel sizes {pixel_sizes} and axes {axes_cloudvolume}."
     )
 
 
@@ -141,5 +144,5 @@ if __name__ == "__main__":
     from_ome_zarr_04_raster_to_precomputed(
         ome_zarr_path="../../out/20_1_gloms/0",
         precomputed_path="../../out/20_1_gloms_precomputed",
-        is_labels=False,
+        # is_labels=False,
     )
