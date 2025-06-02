@@ -1,4 +1,3 @@
-import os
 import tissue_map_tools as tmt
 from pathlib import Path
 import subprocess
@@ -32,7 +31,8 @@ if not unzipped_path.exists() or CHECKSUM_UNZIPPED != dirhash(unzipped_path, "md
 multires_path = out_path / "multires"
 # cleanup previous runs
 if multires_path.exists():
-    os.system(f"rm -rf {multires_path}")
+    print('please run: "rm -rf out/multires" to remove the files from the previous run')
+    # os.system(f"rm -rf {multires_path}")
 tmt.get_meshes_ng(
     mask_path=str(unzipped_path / "0"),
     out_path=str(out_path / "meshes"),
