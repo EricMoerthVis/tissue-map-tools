@@ -1,3 +1,5 @@
+# originally from https://github.com/davidackerman/multiresolution-mesh-creator/tree/master
+# please see the license in LICENSE_multiresolution-mesh-creator.md
 import numpy as np
 from functools import cmp_to_key
 import struct

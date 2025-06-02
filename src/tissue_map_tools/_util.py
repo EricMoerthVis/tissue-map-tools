@@ -107,7 +107,6 @@ def sub_volume_analysis(
         worked_ids = list(df["id"])
         dataOut = df.to_numpy(dtype="object").tolist()
 
-    chunk_shape = data.chunks
     columns = ["id", "voxels", "chunk_keys"]
     for c in ome_xml.images[0].pixels.channels:
         # Grab the original data
@@ -127,7 +126,7 @@ def sub_volume_analysis(
         columns.append(str(channel) + "_kurtosis")
 
     # Getting the bricks for each mask
-    print("Initialising the Statistics Calcuation")
+    print("Initialising the Statistics Calculation")
     mask_to_brick = _calc_mask_to_brick(data)
     chunk_shape = data.chunks
 
@@ -252,7 +251,7 @@ def get_meshes(mask_path, out_path, csv_out, entity_name, smoothing=0, test=Fals
 
     Returns
     -------
-    Creates indiviudal mesh files in .obj format for each entity in the given segmentation volume
+    Creates individual mesh files in .obj format for each entity in the given segmentation volume
     """
     if not path.exists(out_path):
         os.makedirs(out_path)
@@ -352,6 +351,8 @@ def get_meshes(mask_path, out_path, csv_out, entity_name, smoothing=0, test=Fals
 
 
 """ Functions taken over from "multiresolution-mesh-creator"""
+# originally from https://github.com/davidackerman/multiresolution-mesh-creator/tree/master
+# please see the license in LICENSE_multiresolution-mesh-creator.md
 
 
 def pyfqmr_decimate(
@@ -381,13 +382,13 @@ def pyfqmr_decimate(
 def generate_decimated_meshes(
     output_path, lods, infos, decimation_factor, aggressiveness
 ):
-    """Generate decimatated meshes for all ids in `ids`, over all lod in `lods`."""
+    """Generate decimated meshes for all ids in `ids`, over all lod in `lods`."""
 
     for current_lod in lods:
         os.makedirs(f"{output_path}/mesh_lods/s{current_lod}", exist_ok=True)
         for info in infos:
             if current_lod == 0:
-                ## Write out the original ply to file
+                # Write out the original ply to file
                 mesh = trimesh.Trimesh(info.get("vertices"), info.get("faces"))
                 _ = mesh.export(
                     f"{output_path}/mesh_lods/s{current_lod}/{info.get('id')}.ply"
@@ -684,7 +685,6 @@ def generate_neuroglancer_multires_mesh(
     mesh format using prewritten meshes at different levels of detail.
     """
     os.makedirs(f"{output_path}/multires", exist_ok=True)
-    os.system(f"rm -rf {output_path}/multires/{id} {output_path}/multires/{id}.index")
 
     for idx, current_lod in enumerate(lods):
         if current_lod == 0:
@@ -694,90 +694,91 @@ def generate_neuroglancer_multires_mesh(
 
         vertices, _ = mesh_util.mesh_loader(mesh_path)
 
-        if vertices is not None:
-            if current_lod == 0:
-                max_box_size = lod_0_box_size * 2 ** lods[-1]
-                grid_origin = (vertices.min(axis=0) // max_box_size - 1) * max_box_size
-            vertices -= grid_origin
+        if vertices is None:
+            return
 
-            current_box_size = lod_0_box_size * 2**current_lod
-            start_fragment = np.maximum(
-                vertices.min(axis=0) // current_box_size - 1, np.array([0, 0, 0])
-            ).astype(int)
-            end_fragment = (vertices.max(axis=0) // current_box_size + 1).astype(int)
+        if current_lod == 0:
+            max_box_size = lod_0_box_size * 2 ** lods[-1]
+            # TODO: check
+            grid_origin = (vertices.min(axis=0) // max_box_size - 1) * max_box_size
+        vertices -= grid_origin
 
-            del vertices
+        current_box_size = lod_0_box_size * 2**current_lod
+        start_fragment = np.maximum(
+            vertices.min(axis=0) // current_box_size - 1, np.array([0, 0, 0])
+        ).astype(int)
+        end_fragment = (vertices.max(axis=0) // current_box_size + 1).astype(int)
 
-            # Want to divide the mesh up into upto num_workers chunks. We do
-            # that by first subdividing the largest dimension as much as
-            # possible, followed by the next largest dimension etc so long
-            # as we don't exceed num_workers slices. If we instead slice each
-            # dimension once, before slicing any dimension twice etc, it would
-            # increase the number of mesh slice operations we perform, which
-            # seems slow.
+        del vertices
 
-            max_number_of_chunks = end_fragment - start_fragment
-            dimensions_sorted = np.argsort(-max_number_of_chunks)
-            num_chunks = np.array([1, 1, 1])
+        # Want to divide the mesh up into up to num_workers chunks. We do
+        # that by first subdividing the largest dimension as much as
+        # possible, followed by the next largest dimension etc so long
+        # as we don't exceed num_workers slices. If we instead slice each
+        # dimension once, before slicing any dimension twice etc, it would
+        # increase the number of mesh slice operations we perform, which
+        # seems slow.
 
-            for d in dimensions_sorted:
-                if num_chunks[d] < max_number_of_chunks[d]:
-                    num_chunks[d] += 1
+        max_number_of_chunks = end_fragment - start_fragment
+        dimensions_sorted = np.argsort(-max_number_of_chunks)
+        # TODO: check. This seems wrong
+        num_chunks = np.array([1, 1, 1])
 
-            stride = np.ceil(1.0 * (end_fragment - start_fragment) / num_chunks).astype(
-                np.int32
-            )
+        for d in dimensions_sorted:
+            if num_chunks[d] < max_number_of_chunks[d]:
+                num_chunks[d] += 1
+        # wrong until here
 
-            # Scattering here, unless broadcast=True, causes this issue:
-            # https://github.com/dask/distributed/issues/4612. But that is
-            # slow so we are currently electing to read the meshes each time
-            # within generate_mesh_decomposition.
-            # vertices_to_send = client.scatter(vertices, broadcast=True)
-            # faces_to_send = client.scatter(faces, broadcast=True)
+        stride = np.ceil((end_fragment - start_fragment) / num_chunks).astype(np.int32)
 
-            decomposition_results = []
-            for x in range(start_fragment[0], end_fragment[0], stride[0]):
-                for y in range(start_fragment[1], end_fragment[1], stride[1]):
-                    for z in range(start_fragment[2], end_fragment[2], stride[2]):
-                        current_start_fragment = np.array([x, y, z])
-                        current_end_fragment = current_start_fragment + stride
-                        # then we aren't parallelizing again
-                        decomposition_results.append(
-                            generate_mesh_decomposition(
-                                mesh_path,
-                                lod_0_box_size,
-                                grid_origin,
-                                current_start_fragment,
-                                current_end_fragment,
-                                current_lod,
-                                num_chunks,
-                            )
+        # Scattering here, unless broadcast=True, causes this issue:
+        # https://github.com/dask/distributed/issues/4612. But that is
+        # slow so we are currently electing to read the meshes each time
+        # within generate_mesh_decomposition.
+        # vertices_to_send = client.scatter(vertices, broadcast=True)
+        # faces_to_send = client.scatter(faces, broadcast=True)
+
+        decomposition_results = []
+        for x in range(start_fragment[0], end_fragment[0], stride[0]):
+            for y in range(start_fragment[1], end_fragment[1], stride[1]):
+                for z in range(start_fragment[2], end_fragment[2], stride[2]):
+                    current_start_fragment = np.array([x, y, z])
+                    current_end_fragment = current_start_fragment + stride
+                    # then we aren't parallelizing again
+                    decomposition_results.append(
+                        generate_mesh_decomposition(
+                            mesh_path=mesh_path,
+                            lod_0_box_size=lod_0_box_size,
+                            grid_origin=grid_origin,
+                            start_fragment=current_start_fragment,
+                            end_fragment=current_end_fragment,
+                            current_lod=current_lod,
+                            num_chunks=num_chunks,
                         )
+                    )
 
-            # Remove empty slabs
-            decomposition_results = [
-                fragments for fragments in decomposition_results if fragments
-            ]
+        # Remove empty slabs
+        decomposition_results = [
+            fragments for fragments in decomposition_results if fragments
+        ]
 
-            fragments = [
-                fragment
-                for fragments in decomposition_results
-                for fragment in fragments
-            ]
+        fragments = [
+            fragment for fragments in decomposition_results for fragment in fragments
+        ]
 
-            del decomposition_results
+        del decomposition_results
 
-            mesh_util.write_mesh_files(
-                f"{output_path}/multires",
-                f"{id}",
-                grid_origin,
-                fragments,
-                current_lod,
-                lods[: idx + 1],
-                np.asarray([lod_0_box_size, lod_0_box_size, lod_0_box_size]),
-            )
+        mesh_util.write_mesh_files(
+            mesh_directory=f"{output_path}/multires",
+            object_id=f"{id}",
+            grid_origin=grid_origin,
+            fragments=fragments,
+            current_lod=current_lod,
+            lods=lods[: idx + 1],  # TODO: check
+            chunk_shape=np.asarray([lod_0_box_size, lod_0_box_size, lod_0_box_size]),
+        )
 
-            del fragments
+        del fragments
 
 
 """ END Functions"""
@@ -798,7 +799,8 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
 
     Returns
     -------
-    Creates indiviudal mesh files in .obj format for each entity in the given segmentation volume
+    Creates individual mesh files in .obj format for each entity in the given
+    segmentation volume
     """
     if not path.exists(out_path):
         os.makedirs(out_path)
@@ -853,9 +855,9 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
         )
         mask = np.where(combined_data == _key, 1, 0)
 
-        # try:
         v2, f2, n2, values2 = measure.marching_cubes(volume=mask)
-        # f2 = f2 + 1
+
+        # Bug: trimesh_mesh and the objects created from it are not used
         trimesh_mesh = trimesh.Trimesh(vertices=v2, faces=f2)
 
         # Apply smoothing
@@ -868,7 +870,10 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
             trimesh_mesh.fill_holes()
 
         trimesh_mesh.fix_normals()
+        v2 = trimesh_mesh.vertices
+        f2 = trimesh_mesh.faces
 
+        print("generate decimated mesh")
         generate_decimated_meshes(
             temp_mesh_dir,
             list(range(3)),
@@ -876,13 +881,19 @@ def get_meshes_ng(mask_path, out_path, csv_out, entity_name, smoothing=0, test=F
             4,
             10,
         )
-        generate_neuroglancer_multires_mesh(temp_mesh_dir, 1, list(range(3)), ".ply", 8)
+        print("generate neuroglancer multires mesh")
+        generate_neuroglancer_multires_mesh(
+            output_path=temp_mesh_dir,
+            id=_key,
+            lods=list(range(3)),
+            original_ext=".ply",
+            lod_0_box_size=8,  # TODO: check
+        )
 
+        print("writing info metadata")
         multires_output_path = f"{temp_mesh_dir}/multires"
         mesh_util.write_segment_properties_file(multires_output_path)
         mesh_util.write_info_file(multires_output_path)
-        # except:
-        #     print("Error with", _key)
 
         if test:
             print("Ran as Test")

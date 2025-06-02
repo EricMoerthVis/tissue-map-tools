@@ -1,3 +1,4 @@
+import os
 import tissue_map_tools as tmt
 from pathlib import Path
 import subprocess
@@ -28,21 +29,25 @@ if not unzipped_path.exists() or CHECKSUM_UNZIPPED != dirhash(unzipped_path, "md
         f'unzip -o "{download_path}" -d "{out_path}"', shell=True, check=True
     )
 
-tmt.get_meshes(
+multires_path = out_path / "multires"
+# cleanup previous runs
+if multires_path.exists():
+    os.system(f"rm -rf {multires_path}")
+tmt.get_meshes_ng(
     mask_path=str(unzipped_path / "0"),
     out_path=str(out_path / "meshes"),
     csv_out=str(out_path / "meshes/stats_entity_name.csv"),
     entity_name="entity_name",
     smoothing=5,
-    test=False,
+    test=True,
 )
 
-tmt.sub_volume_analysis(
-    mask_path=str(unzipped_path / "0"),
-    raw_path=str(
-        unzipped_path / "0"
-    ),  # in this example we use the same path for raw and mask
-    ome_xml_path=str(unzipped_path / "OME" / "METADATA.ome.xml"),
-    csv_out=str(out_path / "meshes/stats_entity_name.csv"),
-    mask_generation_res="0",
-)
+# tmt.sub_volume_analysis(
+#     mask_path=str(unzipped_path / "0"),
+#     raw_path=str(
+#         unzipped_path / "0"
+#     ),  # in this example we use the same path for raw and mask
+#     ome_xml_path=str(unzipped_path / "OME" / "METADATA.ome.xml"),
+#     csv_out=str(out_path / "meshes/stats_entity_name.csv"),
+#     mask_generation_res="0",
+# )
