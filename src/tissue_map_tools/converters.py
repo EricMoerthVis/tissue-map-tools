@@ -1,3 +1,4 @@
+import numpy as np
 from pathlib import Path
 
 from cloudvolume.dask import to_cloudvolume
@@ -5,16 +6,21 @@ from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
 
 
-def from_ome_zarr_04_labels_to_precomputed(
+def from_ome_zarr_04_raster_to_precomputed(
     ome_zarr_path: str | Path,
     precomputed_path: str | Path,
+    is_labels: bool | None = None,
 ):
     """
     Convert OME-Zarr v0.4 to Precomputed format.
 
     Args:
-        ome_zarr_path (str): Path to the OME-Zarr directory.
-        precomputed_path (str): Path to save the Precomputed data.
+        ome_zarr_path (str | Path): Path to the OME-Zarr directory.
+        precomputed_path (str | Path): Path to save the Precomputed data.
+        is_labels (bool, optional): If True, the data is treated as labels (i.e., the
+            precomputed format will not have the "c" axis, which is used for channels).
+            If False, the data is treated as an image. If None, the function will try to
+            infer it from the data.
     """
     # read raster data
     ome_zarr_path = Path(ome_zarr_path)
@@ -82,15 +88,38 @@ def from_ome_zarr_04_labels_to_precomputed(
                 "the Precomputed format. Please convert the data to a single time point."
             )
 
+    # remove c
+    if is_labels is not None:
+        remove_c = is_labels
+        if remove_c and "c" not in axes:
+            raise ValueError(
+                "The OME-Zarr data does not contain a 'c' axis, but is_labels is True."
+            )
+        if remove_c and dask_data_scale0.shape[axes_index["c"]] > 1:
+            raise ValueError(
+                "The OME-Zarr data contains multiple channels, but is_labels is True."
+            )
+        if remove_c and not np.isdtype(dask_data_scale0.dtype, "integral"):
+            raise ValueError(
+                "The OME-Zarr data is not of integral type, but is_labels is True."
+            )
+    else:
+        remove_c = (
+            "c" in axes
+            and dask_data_scale0.shape[axes_index["c"]] == 1
+            and np.isdtype(dask_data_scale0.dtype, "integral")
+        )
+
+    if remove_c:
+        dask_data_scale0 = dask_data_scale0.squeeze(axis=axes_index["c"])
+        axes.remove("c")
+        axes_index = {ax: i for i, ax in enumerate(axes)}
+
+    axes_cloudvolume = [ax for ax in ["x", "y", "z", "c"] if ax in axes]
     # cloud volume wants x, y, z(, c) axes order
     transposed = dask_data_scale0.transpose(
-        axes_index["x"], axes_index["y"], axes_index["z"], axes_index["c"]
+        *[axes_index[ax] for ax in axes_cloudvolume]
     )
-
-    # remove c (this should be optional depending on an argument)
-    dask_data_scale0 = dask_data_scale0.squeeze(axis=axes_index["c"])
-    axes.remove("c")
-    axes_index = {ax: i for i, ax in enumerate(axes)}
 
     ROUNDING_FACTOR = 1000
     pixel_sizes = {
@@ -102,10 +131,15 @@ def from_ome_zarr_04_labels_to_precomputed(
         cloudpath=precomputed_path,
         resolution=[pixel_sizes["x"], pixel_sizes["y"], pixel_sizes["z"]],
     )
+    print(
+        f"Converted OME-Zarr data from {ome_zarr_path} to the Precomputed format at "
+        f"{precomputed_path} with pixel sizes {pixel_sizes} and axes {axes_cloudvolume}."
+    )
 
 
 if __name__ == "__main__":
-    from_ome_zarr_04_labels_to_precomputed(
+    from_ome_zarr_04_raster_to_precomputed(
         ome_zarr_path="../../out/20_1_gloms/0",
         precomputed_path="../../out/20_1_gloms_precomputed",
+        is_labels=False,
     )
