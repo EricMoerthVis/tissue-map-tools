@@ -42,9 +42,9 @@ Editable install
 uv venv
 source .venv/bin/activate
 # install with specific dependency groups
-uv sync --group examples --group dev
+uv sync --group examples --group dev --group test
 # note: calling `uv sync` is equivalent to the above since
-# `tool.uv.default-groups = ["examples", "dev"]` in `pyproject.toml`
+# `tool.uv.default-groups = ["examples", "dev", "test"]` in `pyproject.toml`
 ```
 
 Adding/removing packages

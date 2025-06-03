@@ -38,9 +38,12 @@ examples = [
 dev = [
     "pre-commit>=4.2.0",
 ]
+test = [
+    "pytest"
+]
 
 [tool.uv]
-default-groups = ["examples", "dev"]
+default-groups = ["examples", "dev", "test"]
 
 [build-system]
 requires = ["hatchling"]
