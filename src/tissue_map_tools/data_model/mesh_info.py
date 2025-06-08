@@ -5,26 +5,31 @@ from pydantic import BaseModel, Field, ConfigDict
 class ShardingSpecification(BaseModel):
     """
     Pydantic model for the sharding specification.
-    Based on the example: {"@type": "neuroglancer_uint64_sharded_v1", "preshift_bits": 0, "hash": "murmurhash3_x86_128", "minishard_bits": 0, "shard_bits": 0, "minishard_index_encoding": "gzip", "data_encoding": "raw"}
-    And the reference to ./sharded.md in specs.md
+
+    See the full specification at: https://github.com/google/neuroglancer/blob/master/src/datasource/precomputed/sharded.md#sharding-specification
     """
 
-    type: str = Field(..., alias="@type")
-    preshift_bits: Optional[int] = None
-    hash_function: Optional[str] = Field(
-        None, alias="hash"
-    )  # 'hash' is a built-in, alias if needed
-    minishard_bits: Optional[int] = None
-    shard_bits: Optional[int] = None
-    minishard_index_encoding: Optional[str] = None  # e.g., "gzip"
-    data_encoding: Optional[str] = None  # e.g., "raw", "gzip"
+    type: Literal["neuroglancer_uint64_sharded_v1"] = Field(..., alias="@type")
+    preshift_bits: int
+    # using a alias because 'hash' is a Python built-in
+    hash_function: Literal["identity", "murmurhash3_x86_128"] = Field(..., alias="hash")
+    minishard_bits: int
+    shard_bits: int
+    # when not specified, the default is 'raw'
+    minishard_index_encoding: Optional[Literal["raw", "gzip"]] = None
+    # same for data_encoding, default is 'raw'; in the case of multiscale meshes,
+    # this encoding applies to the manifests but not to the mesh fragment data (which
+    # uses Draco compression)
+    data_encoding: Optional[Literal["raw", "gzip"]] = None
 
     model_config = ConfigDict(validate_by_name=True, extra="allow")
 
 
 class MultilodDracoInfo(BaseModel):
     """
-    Pydantic model for the multi-resolution mesh info JSON file format.
+    Pydantic model for the multi-resolution mesh format.
+
+    See the full specification at: https://github.com/google/neuroglancer/blob/master/src/datasource/precomputed/meshes.md
     """
 
     type: Literal["neuroglancer_multilod_draco"] = Field(..., alias="@type")
@@ -34,7 +39,7 @@ class MultilodDracoInfo(BaseModel):
     sharding: Optional[ShardingSpecification] = None
     # as explained in the specs, if specified, the segment properties are used from here
     # only if the meshes is the data source. If the data source is the volume that
-    # contains the meshes, the the segment properties should be specified in the volume
+    # contains the meshes, then the segment properties should be specified in the volume
     # info file.
     segment_properties: Optional[str] = None
 

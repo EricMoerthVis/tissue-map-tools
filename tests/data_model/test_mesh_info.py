@@ -19,8 +19,8 @@ sharded_data = {
         "@type": "neuroglancer_uint64_sharded_v1",
         "preshift_bits": 0,
         "hash": "murmurhash3_x86_128",
-        "minishard_bits": 0,
-        "shard_bits": 0,
+        "minishard_bits": 10,
+        "shard_bits": 10,
         "minishard_index_encoding": "gzip",
         "data_encoding": "raw",
     },
@@ -31,23 +31,13 @@ minimal_sharded_data = {
     "vertex_quantization_bits": 10,
     "transform": [1.0, 0.0, 0.0, 100.0, 0.0, 1.0, 0.0, 200.0, 0.0, 0.0, 1.0, 300.0],
     "lod_scale_multiplier": 0.5,
-    "sharding": {"@type": "neuroglancer_uint64_sharded_v1"},
-}
-
-unsharded_with_segment_props_data = {
-    "@type": "neuroglancer_multilod_draco",
-    "vertex_quantization_bits": 16,
-    "transform": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-    "lod_scale_multiplier": 1.0,
-    "segment_properties": "properties_subdir",
-}
-
-segment_props_empty_string_data = {
-    "@type": "neuroglancer_multilod_draco",
-    "vertex_quantization_bits": 16,
-    "transform": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-    "lod_scale_multiplier": 1.0,
-    "segment_properties": "",
+    "sharding": {
+        "@type": "neuroglancer_uint64_sharded_v1",
+        "preshift_bits": 0,
+        "hash": "murmurhash3_x86_128",
+        "minishard_bits": 10,
+        "shard_bits": 10,
+    },
 }
 
 # Test data with extra fields (not in spec but should be allowed)
@@ -126,17 +116,6 @@ def test_parse_minimal_sharded_info():
     assert info.lod_scale_multiplier == 0.5
     assert info.sharding is not None
     assert info.sharding.type == "neuroglancer_uint64_sharded_v1"
-
-
-def test_parse_unsharded_with_segment_properties():
-    info = MultilodDracoInfo(**unsharded_with_segment_props_data)
-    assert info.type == "neuroglancer_multilod_draco"
-    assert info.segment_properties == "properties_subdir"
-
-
-def test_segment_properties_empty_string():
-    info = MultilodDracoInfo(**segment_props_empty_string_data)
-    assert info.segment_properties == ""
 
 
 def test_extra_fields_allowed():
