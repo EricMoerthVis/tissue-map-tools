@@ -137,7 +137,7 @@ def view_precomputed_in_napari(
                     data_mins_xyz = np.minimum(data_mins_xyz, mins).tolist()
                     data_maxs_xyz = np.maximum(data_maxs_xyz, maxs).tolist()
 
-    if show_axes:
+    if show_axes and data_maxs_xyz:
         if not show_meshes:
             warnings.warn(
                 "Currently show_axes is only supported when show_meshes is True."
@@ -179,13 +179,16 @@ if __name__ == "__main__":
     # remove the background
     unique_labels.remove(0)
     # fmt: on
-    # viewer = view_precomputed_in_neuroglancer(
-    #     data_path="../../out/20_1_gloms_precomputed",
-    #     mesh_layer_name="mesh_mip_0_err_40",
-    #     mesh_ids=unique_labels,
-    # )
-    viewer = view_precomputed_in_napari(
+    viewer = view_precomputed_in_neuroglancer(
         data_path="../../out/20_1_gloms_precomputed",
-        mesh_layer_name="glom",
+        # data_path="../../out/20_1_gloms_precomputed_multiscale",
+        mesh_layer_name="mesh_mip_0_err_40",
         mesh_ids=unique_labels,
     )
+    # viewer = view_precomputed_in_napari(
+    #     data_path="../../out/20_1_gloms_precomputed",
+    #     mesh_layer_name="glom",
+    #     # show_raster=True,
+    #     show_meshes=True,
+    #     mesh_ids=unique_labels,
+    # )
