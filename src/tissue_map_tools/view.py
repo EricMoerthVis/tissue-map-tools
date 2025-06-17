@@ -107,9 +107,9 @@ def view_precomputed_in_napari(
         if mesh_ids is None:
             raise NotImplementedError("mesh_ids must be provided for mesh layers.")
 
-        meshes = cv.mesh.get(segids=mesh_ids[1:])
+        meshes = cv.mesh.get(segids=mesh_ids)
 
-        random_colors = RNG.random((len(unique_labels), 3))
+        random_colors = RNG.random((len(unique_labels) + 1, 3))
 
         data_mins_xyz: list[float] = []
         data_maxs_xyz: list[float] = []
@@ -137,7 +137,7 @@ def view_precomputed_in_napari(
                     data_mins_xyz = np.minimum(data_mins_xyz, mins).tolist()
                     data_maxs_xyz = np.maximum(data_maxs_xyz, maxs).tolist()
 
-    if show_axes:
+    if show_axes and data_maxs_xyz:
         if not show_meshes:
             warnings.warn(
                 "Currently show_axes is only supported when show_meshes is True."
@@ -176,14 +176,19 @@ if __name__ == "__main__":
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
         22, 23, 24
     ]
+    # remove the background
+    unique_labels.remove(0)
     # fmt: on
-    # viewer = view_precomputed_in_neuroglancer(
-    #     data_path="../../out/20_1_gloms_precomputed",
-    #     mesh_layer_name="mesh_mip_0_err_40",
-    #     mesh_ids=unique_labels,
-    # )
-    viewer = view_precomputed_in_napari(
+    viewer = view_precomputed_in_neuroglancer(
         data_path="../../out/20_1_gloms_precomputed",
-        mesh_layer_name="glom",
+        # data_path="../../out/20_1_gloms_precomputed_multiscale",
+        mesh_layer_name="mesh_mip_0_err_40",
         mesh_ids=unique_labels,
     )
+    # viewer = view_precomputed_in_napari(
+    #     data_path="../../out/20_1_gloms_precomputed",
+    #     mesh_layer_name="glom",
+    #     # show_raster=True,
+    #     show_meshes=True,
+    #     mesh_ids=unique_labels,
+    # )
