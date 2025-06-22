@@ -30,6 +30,7 @@ dependencies = [
     "zarr>=2.18.7",
     "cloud-volume>=12.3.1",
     "xarray>=2024.9.0",
+    "vedo>=2025.5.4",
 ]
 
 [dependency-groups]
@@ -41,6 +42,7 @@ examples = [
     "napari>=0.6.1",
     "devtools>=0.12.2",
     "pyqt5>=5.15.11",
+    "fiona>=1.10.1",
 ]
 dev = [
     "pre-commit>=4.2.0",
