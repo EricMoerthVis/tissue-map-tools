@@ -6,7 +6,7 @@ import napari_spatialdata.constants.config
 import spatialdata as sd
 from pathlib import Path
 from tissue_map_tools.converters import (
-    from_spatialdata_raster_to_precomputed,
+    from_spatialdata_raster_to_precomputed_raster,
     # from_ome_zarr_04_raster_to_precomputed,
 )
 
@@ -52,7 +52,7 @@ print(sd.get_extent(sdata["molecules"]))
 
 ##
 
-from_spatialdata_raster_to_precomputed(
+from_spatialdata_raster_to_precomputed_raster(
     raster=sdata["dapi_labels"],
     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
 )

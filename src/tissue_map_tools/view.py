@@ -27,7 +27,8 @@ def view_precomputed_in_neuroglancer(
 
     cv = CloudVolume(cloudpath=data_path)
     data_type = cv.info["type"]
-    layer_name = layer_name if layer_name is not None else Path(cv.layerpath).name
+    # layer_name = layer_name if layer_name is not None else Path(cv.layerpath).name
+    layer_name = layer_name if layer_name is not None else cv.info['scales'][0]['key']
 
     if viewer is None:
         viewer = neuroglancer.Viewer()
@@ -48,6 +49,7 @@ def view_precomputed_in_neuroglancer(
         if show_meshes:
             if "mesh" in cv.meta.info:
                 mesh_subpath = cv.meta.info["mesh"]
+                mesh_layer_name = mesh_layer_name if mesh_layer_name else mesh_subpath
                 s.layers[mesh_layer_name] = neuroglancer.SegmentationLayer(
                     source=url + f"/{mesh_subpath}",
                     segments=mesh_ids,
@@ -63,6 +65,7 @@ def view_precomputed_in_neuroglancer(
 
 def view_precomputed_in_napari(
     data_path: str,
+    layer_name: str | None = None,
     mesh_layer_name: str | None = None,
     mesh_ids: list[int] | None = None,
     show_raster: bool = False,
@@ -75,6 +78,7 @@ def view_precomputed_in_napari(
         viewer = napari.Viewer(ndisplay=3)
 
     cv = CloudVolume(data_path)
+    layer_name = layer_name if layer_name is not None else cv.info['scales'][0]['key']
 
     if show_raster:
         raster = cv.to_dask()
@@ -90,14 +94,14 @@ def view_precomputed_in_napari(
         if type == "image":
             viewer.add_image(
                 raster,
-                name=mesh_layer_name if mesh_layer_name else "image",
+                name=layer_name,
                 colormap="gray",
                 affine=affine,
             )
         elif type == "segmentation":
             viewer.add_labels(
                 raster,
-                name=mesh_layer_name if mesh_layer_name else "segmentation",
+                name=layer_name,
                 affine=affine,
             )
         else:
@@ -106,6 +110,8 @@ def view_precomputed_in_napari(
     if show_meshes:
         if mesh_ids is None:
             raise NotImplementedError("mesh_ids must be provided for mesh layers.")
+
+        mesh_layer_name = mesh_layer_name if mesh_layer_name else cv.info['mesh']
 
         meshes = cv.mesh.get(segids=mesh_ids[1:])
 
@@ -172,18 +178,28 @@ def view_precomputed_in_napari(
 
 if __name__ == "__main__":
     # fmt: off
-    unique_labels = [
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-        22, 23, 24
-    ]
+    # unique_labels = [
+    #     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+    #     22, 23, 24,
+    # ]
     # fmt: on
     # viewer = view_precomputed_in_neuroglancer(
     #     data_path="../../out/20_1_gloms_precomputed",
     #     mesh_layer_name="mesh_mip_0_err_40",
     #     mesh_ids=unique_labels,
     # )
-    viewer = view_precomputed_in_napari(
-        data_path="../../out/20_1_gloms_precomputed",
-        mesh_layer_name="glom",
+    # viewer = view_precomputed_in_napari(
+    #     data_path="../../out/20_1_gloms_precomputed",
+    #     mesh_layer_name="glom",
+    #     mesh_ids=unique_labels,
+    # )
+    unique_labels = np.arange(5929).astype(int).tolist()
+    viewer = view_precomputed_in_neuroglancer(
+        data_path="/Users/macbook/Desktop/moffitt_precomputed",
         mesh_ids=unique_labels,
     )
+    # unique_labels = np.arange(100).astype(int).tolist()
+    # viewer = view_precomputed_in_napari(
+    #     data_path="/Users/macbook/Desktop/moffitt_precomputed",
+    #     mesh_ids=unique_labels,
+    # )

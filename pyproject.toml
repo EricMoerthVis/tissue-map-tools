@@ -1,13 +1,13 @@
 [project]
 name = "tissue-map-tools"
 version = "0.1.0"
-description = "Add your description here"
+description = "Utilities for working with tissue maps and 3D spatial omics in Python, with a focus on mesh processing and visualization."
 readme = "README.md"
 authors = [
     { name = "Eric Moerth", email = "ericmoerth@g.harvard.edu" },
     { name = "Luca Marconato", email = "luca.marconato@embl.de" }
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "zmesh>=1.0.0",
     "trimesh",
@@ -34,6 +34,10 @@ dependencies = [
 ]
 
 [dependency-groups]
+extra = [
+    "igneous-pipeline>=4.30.0",
+    "task-queue>=2.14.2",
+]
 examples = [
     "dirhash>=0.5.0",
     "neuroglancer>=2.40.1",
