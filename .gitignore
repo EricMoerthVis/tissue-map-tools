@@ -8,3 +8,5 @@ out/*
 .DS_Store
 sandbox/*
 __pycache__/
+*.pyc
+__pycache__/

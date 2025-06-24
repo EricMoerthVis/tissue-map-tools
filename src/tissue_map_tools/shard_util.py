@@ -7,7 +7,9 @@ from pathlib import Path
 
 
 def get_ids_from_shard_files(
-    data_path: str | Path, shard_filename: str | None = None
+    data_path: str | Path,
+    root_data_path: str | Path,
+    shard_filename: str | None = None,
 ) -> list[int]:
     """
     Get mesh IDs from shard files in a specified directory.
@@ -16,6 +18,9 @@ def get_ids_from_shard_files(
     ----------
     data_path
         path to the folder containing the shard files
+    root_data_path
+        path to the CloudVolume data, used to access metadata and cache (for
+        instance, for meshes this is the parent folder of the mesh directory files).
     shard_filename
         filenames for the shard files (including the .shard extension). If unspecified,
         all shard files in the directory will be considered.
@@ -24,8 +29,9 @@ def get_ids_from_shard_files(
     list[int]
         list of mesh IDs found in the shard files
     """
+    root_data_path = Path(root_data_path)
     data_path = Path(data_path)
-    cv = CloudVolume(cloudpath=str(data_path))
+    cv = CloudVolume(cloudpath=str(root_data_path))
     meta = cv.mesh.meta
     cache = cv.mesh.cache
     data = cv.mesh.meta.info["sharding"]

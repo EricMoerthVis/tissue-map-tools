@@ -1,5 +1,6 @@
 import webbrowser
 
+from pathlib import Path
 import warnings
 import napari
 import neuroglancer
@@ -33,7 +34,6 @@ def view_precomputed_in_neuroglancer(
     if viewer is None:
         viewer = neuroglancer.Viewer()
     url = f"precomputed://http://localhost:{port}"
-    cv
     with viewer.txn() as s:
         if data_type == "image":
             s.layers[layer_name] = neuroglancer.ImageLayer(
@@ -51,7 +51,10 @@ def view_precomputed_in_neuroglancer(
                 mesh_subpath = cv.meta.info["mesh"]
                 mesh_layer_name = mesh_layer_name if mesh_layer_name else mesh_subpath
                 if mesh_ids is None:
-                    mesh_ids = get_ids_from_shard_files(data_path)
+                    mesh_ids = get_ids_from_shard_files(
+                        root_data_path=data_path,
+                        data_path=Path(data_path) / mesh_subpath,
+                    )
                 s.layers[mesh_layer_name] = neuroglancer.SegmentationLayer(
                     source=url + f"/{mesh_subpath}",
                     segments=mesh_ids,
@@ -110,14 +113,15 @@ def view_precomputed_in_napari(
             raise ValueError(f"Unsupported data type: {type}")
 
     if show_meshes:
-        if mesh_ids is None:
-            mesh_ids = get_ids_from_shard_files(data_path)
-
         mesh_layer_name = mesh_layer_name if mesh_layer_name else cv.info["mesh"]
+        if mesh_ids is None:
+            mesh_ids = get_ids_from_shard_files(
+                root_data_path=data_path, data_path=Path(data_path) / mesh_layer_name
+            )
 
         meshes = cv.mesh.get(segids=mesh_ids[1:])
 
-        random_colors = RNG.random((len(unique_labels) + 1, 3))
+        random_colors = RNG.random((len(mesh_ids) + 1, 3))
 
         data_mins_xyz: list[float] = []
         data_maxs_xyz: list[float] = []
@@ -125,6 +129,12 @@ def view_precomputed_in_napari(
             if mesh_id == 0:
                 continue
             mesh = meshes[mesh_id]
+            if len(mesh) == 0:
+                warnings.warn(
+                    f"Mesh with ID {mesh_id} is empty. Skipping this mesh.",
+                    stacklevel=2,
+                )
+                continue
             vertices = mesh.vertices
             faces = mesh.faces
             vertex_colors = np.full((len(vertices), 3), random_colors[mesh_id])
@@ -203,13 +213,13 @@ if __name__ == "__main__":
     #     mesh_layer_name="glom",
     #     mesh_ids=unique_labels,
     # )
-    unique_labels = np.arange(5929).astype(int).tolist()
-    viewer = view_precomputed_in_neuroglancer(
+    # unique_labels = np.arange(5929).astype(int).tolist()
+    # viewer = view_precomputed_in_neuroglancer(
+    #     data_path="/Users/macbook/Desktop/moffitt_precomputed",
+    #     # mesh_ids=unique_labels,
+    # )
+    unique_labels = np.arange(100).astype(int).tolist()
+    viewer = view_precomputed_in_napari(
         data_path="/Users/macbook/Desktop/moffitt_precomputed",
         mesh_ids=unique_labels,
     )
-    # unique_labels = np.arange(100).astype(int).tolist()
-    # viewer = view_precomputed_in_napari(
-    #     data_path="/Users/macbook/Desktop/moffitt_precomputed",
-    #     mesh_ids=unique_labels,
-    # )

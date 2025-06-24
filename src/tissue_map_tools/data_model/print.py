@@ -1,8 +1,9 @@
 from cloudvolume import CloudVolume
 import xarray as xr
-from tissue_map_tools.data_model.mesh_info import MultilodDracoInfo
-from devtools import pprint
+from pathlib import Path
 from tqdm import tqdm
+from tissue_map_tools.shard_util import get_ids_from_shard_files
+from xarray import DataTree
 
 
 def print_cloudvolume_volume(data: CloudVolume):
@@ -34,33 +35,41 @@ def print_cloudvolume_volume(data: CloudVolume):
 
 
 def print_cloudvolume_mesh(data: CloudVolume, unique_ids: list[int] | None = None):
-    if unique_ids is None:
-        raise NotImplementedError(
-            "Currently, unique_ids cannot be inferred from the mesh."
-        )
     info = data.info.copy()
     if "mesh" not in info:
-        return
-    # name = info["mesh"]
-    data.mesh.__dict__
-    mesh_info = data.mesh.meta.info
-    manifest = data.mesh.get_manifest(segid=1)
-    manifest.__dict__
-    multilod_draco_info = MultilodDracoInfo.model_validate(mesh_info)
-    pprint(multilod_draco_info)
+        return []
 
-    ##
-    # the number of lods needs to be inferred from the mesh info
-    for lod in [0, 1, 2, 3]:
-        for segid in tqdm(unique_ids, desc="Downloading meshes"):
-            if segid == 0:
-                continue
+    if unique_ids is None:
+        path = Path(data.meta.path.basepath) / data.meta.path.layer
+        mesh = data.info["mesh"]
+        data_path = str(path / mesh)
+        unique_ids = get_ids_from_shard_files(root_data_path=path, data_path=data_path)
+
+    datatrees = []
+    for segid in tqdm(unique_ids, desc="Downloading meshes"):
+        manifest = data.mesh.get_manifest(segid=segid)
+        lod_datasets = {}
+        for lod in range(manifest.num_lods):
             mesh = data.mesh.get(segids=segid, lod=lod)[segid]
-            print(mesh)
-            mesh.vertices
-            mesh.faces
-    ##
-    pass
+            ds = xr.Dataset(
+                {
+                    "vertices": (("vertex", "xyz"), mesh.vertices),
+                    "faces": (("face", "corners"), mesh.faces),
+                }
+            )
+            # Optionally add normals if present
+            if (
+                hasattr(mesh, "normals")
+                and mesh.normals is not None
+                and len(mesh.normals) > 0
+            ):
+                ds["normals"] = (("vertex", "normal"), mesh.normals)
+            ds.attrs = {"segid": segid, "lod": lod}
+            lod_datasets[f"lod{lod}"] = ds
+        tree = DataTree.from_dict(lod_datasets)
+        tree.attrs = {"segid": segid}
+        datatrees.append(tree)
+    return datatrees
 
 
 if __name__ == "__main__":
@@ -82,8 +91,5 @@ if __name__ == "__main__":
     cv.image.download(bbox=bbox, mip=0).shape
 
     cv_mesh = CloudVolume("../../../out/20_1_gloms_precomputed")
-    # fmt: off
-    unique_ids = [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16,
-       17, 18, 19, 20, 21, 22, 23, 24]
-    # fmt: on
-    print_cloudvolume_mesh(cv_mesh, unique_ids=unique_ids)
+    dt = print_cloudvolume_mesh(cv_mesh)
+    print(dt)

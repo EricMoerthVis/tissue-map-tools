@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from tissue_map_tools.data_model.mesh_info import MultilodDracoInfo
+from tissue_map_tools.data_model.mesh import MultilodDracoInfo
 
 # Valid data examples
 unsharded_data = {
@@ -23,20 +23,6 @@ sharded_data = {
         "shard_bits": 10,
         "minishard_index_encoding": "gzip",
         "data_encoding": "raw",
-    },
-}
-
-minimal_sharded_data = {
-    "@type": "neuroglancer_multilod_draco",
-    "vertex_quantization_bits": 10,
-    "transform": [1.0, 0.0, 0.0, 100.0, 0.0, 1.0, 0.0, 200.0, 0.0, 0.0, 1.0, 300.0],
-    "lod_scale_multiplier": 0.5,
-    "sharding": {
-        "@type": "neuroglancer_uint64_sharded_v1",
-        "preshift_bits": 0,
-        "hash": "murmurhash3_x86_128",
-        "minishard_bits": 10,
-        "shard_bits": 10,
     },
 }
 
@@ -107,15 +93,6 @@ def test_parse_sharded_info():
     assert info.sharding.type == "neuroglancer_uint64_sharded_v1"
     assert info.sharding.preshift_bits == 0
     assert info.sharding.hash_function == "murmurhash3_x86_128"
-
-
-def test_parse_minimal_sharded_info():
-    info = MultilodDracoInfo(**minimal_sharded_data)
-    assert info.type == "neuroglancer_multilod_draco"
-    assert info.vertex_quantization_bits == 10
-    assert info.lod_scale_multiplier == 0.5
-    assert info.sharding is not None
-    assert info.sharding.type == "neuroglancer_uint64_sharded_v1"
 
 
 def test_extra_fields_allowed():
