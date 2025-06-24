@@ -1,16 +1,23 @@
+import dask.array
 import numpy as np
 from pathlib import Path
 
 from cloudvolume.dask import to_cloudvolume
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
+from xarray import DataArray, DataTree
+from dask.dataframe import DataFrame as DaskDataFrame
+
+# behavior around this should be improved and made consistent across all the functions
+# that convert to precomputed format
+ROUNDING_FACTOR = 1000
 
 
-def from_ome_zarr_04_raster_to_precomputed(
+def from_ome_zarr_04_raster_to_precomputed_raster(
     ome_zarr_path: str | Path,
     precomputed_path: str | Path,
     is_labels: bool | None = None,
-):
+) -> None:
     """
     Convert OME-Zarr v0.4 to Precomputed format.
 
@@ -92,9 +99,8 @@ def from_ome_zarr_04_raster_to_precomputed(
     if is_labels is not None:
         remove_c = is_labels
         if remove_c and "c" not in axes:
-            raise ValueError(
-                "The OME-Zarr data does not contain a 'c' axis, but is_labels is True."
-            )
+            # nothing to do
+            remove_c = False
         if remove_c and dask_data_scale0.shape[axes_index["c"]] > 1:
             raise ValueError(
                 "The OME-Zarr data contains multiple channels, but is_labels is True."
@@ -116,13 +122,13 @@ def from_ome_zarr_04_raster_to_precomputed(
         axes.remove("c")
         axes_index = {ax: i for i, ax in enumerate(axes)}
 
-    axes_cloudvolume = [ax for ax in ["x", "y", "z", "c"] if ax in axes]
-    # cloud volume wants x, y, z(, c) axes order
-    transposed = dask_data_scale0.transpose(
-        *[axes_index[ax] for ax in axes_cloudvolume]
-    )
+    # axes_cloudvolume = [ax for ax in ["x", "y", "z", "c"] if ax in axes]
+    # # cloud volume wants x, y, z(, c) axes order
+    # transposed = dask_data_scale0.transpose(
+    #     *[axes_index[ax] for ax in axes_cloudvolume]
+    # )
+    transposed = _transpose_dask_data_for_cloudvolume(dask_data_scale0, axes=axes)
 
-    ROUNDING_FACTOR = 1000
     pixel_sizes = {
         axis: round(ROUNDING_FACTOR * scale_factors[axis]) for axis in ["x", "y", "z"]
     }
@@ -136,13 +142,84 @@ def from_ome_zarr_04_raster_to_precomputed(
     )
     print(
         f"Converted OME-Zarr data from {ome_zarr_path} to the Precomputed format ("
-        f"{layer_type}) at {precomputed_path} with pixel sizes {pixel_sizes} and axes {axes_cloudvolume}."
+        f"{layer_type}) at {precomputed_path} with pixel sizes {pixel_sizes} and axes {_get_axes_cloudvolume(axes)}."
     )
 
 
+def _get_axes_cloudvolume(
+    axes: list[str],
+) -> list[str]:
+    return [ax for ax in ["x", "y", "z", "c"] if ax in axes]
+
+
+def _transpose_dask_data_for_cloudvolume(
+    dask_data: dask.array.Array, axes: list[str]
+) -> dask.array.Array:
+    # cloud volume wants x, y, z(, c) axes order
+    axes_index = {ax: i for i, ax in enumerate(axes)}
+    axes_cloudvolume = _get_axes_cloudvolume(axes)
+    return dask_data.transpose(*[axes_index[ax] for ax in axes_cloudvolume])
+
+
+def from_spatialdata_raster_to_precomputed_raster(
+    raster: DataArray | DataTree,
+    precomputed_path: str | Path,
+) -> None:
+    import spatialdata as sd
+
+    model = sd.models.get_model(raster)
+    if model not in (sd.models.Labels3DModel, sd.models.Image3DModel):
+        raise ValueError(
+            f"Unsupported model {model}. Only Labels3DModel and Image3DModel are supported."
+        )
+    transformation = sd.transformations.get_transformation(raster)
+    axes = sd.models.get_axes_names(raster)
+
+    transposed = _transpose_dask_data_for_cloudvolume(
+        dask_data=raster.data,
+        axes=axes,
+    )
+
+    layer_type = "segmentation" if model == sd.models.Labels3DModel else "image"
+
+    affine = transformation.to_affine_matrix(
+        input_axes=("x", "y", "z"), output_axes=("x", "y", "z")
+    )
+    if not np.allclose(affine[:3, :3], np.diag(np.diag(affine[:3, :3]))):
+        raise ValueError(
+            "The transformation is not diagonal. Only diagonal transformations are "
+            "currently supported."
+        )
+    pixel_sizes = dict(zip(["x", "y", "z"], np.diag(affine[:3, :3])))
+    pixel_sizes = {k: round(ROUNDING_FACTOR * v) for k, v in pixel_sizes.items()}
+
+    to_cloudvolume(
+        arr=transposed,
+        layer_type=layer_type,
+        cloudpath=precomputed_path,
+        resolution=[pixel_sizes["x"], pixel_sizes["y"], pixel_sizes["z"]],
+    )
+    print(
+        f"Converted OME-Zarr data to the Precomputed format ("
+        f"{layer_type}) at {precomputed_path} with pixel sizes {pixel_sizes} and axes {_get_axes_cloudvolume(axes)}."
+    )
+
+
+def from_spatialdata_points_to_precomputed_points(
+    points: DaskDataFrame,
+    precomputed_path: str | Path,
+) -> None:
+    pass
+
+
 if __name__ == "__main__":
-    from_ome_zarr_04_raster_to_precomputed(
+    from_ome_zarr_04_raster_to_precomputed_raster(
         ome_zarr_path="../../out/20_1_gloms/0",
         precomputed_path="../../out/20_1_gloms_precomputed",
         # is_labels=False,
     )
+    # from_ome_zarr_04_raster_to_precomputed_raster(
+    #     ome_zarr_path="../../out/20_1_gloms/0",
+    #     precomputed_path="../../out/20_1_gloms_precomputed",
+    #     # is_labels=False,
+    # )
