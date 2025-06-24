@@ -1,7 +1,7 @@
 [project]
 name = "tissue-map-tools"
 version = "0.1.0"
-description = "Add your description here"
+description = "Utilities for working with tissue maps and 3D spatial omics in Python, with a focus on mesh processing and visualization."
 readme = "README.md"
 authors = [
     { name = "Eric Moerth", email = "ericmoerth@g.harvard.edu" },
@@ -28,12 +28,25 @@ dependencies = [
     "trame-jupyter-extension>=2.1.4",
     "watchfiles>=1.0.5",
     "zarr>=2.18.7",
+    "cloud-volume>=12.3.1",
+    "xarray>=2024.9.0",
+    "vedo>=2025.5.4",
 ]
 
 [dependency-groups]
+extra = [
+    "igneous-pipeline>=4.30.0",
+    "task-queue>=2.14.2",
+]
 examples = [
     "dirhash>=0.5.0",
     "neuroglancer>=2.40.1",
+    "napari-spatialdata>=0.5.5",
+    "spatialdata>=0.4.0",
+    "napari>=0.6.1",
+    "devtools>=0.12.2",
+    "pyqt5>=5.15.11",
+    "fiona>=1.10.1",
 ]
 dev = [
     "pre-commit>=4.2.0",
