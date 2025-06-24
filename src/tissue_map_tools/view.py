@@ -4,13 +4,9 @@ import warnings
 import napari
 import neuroglancer
 from cloudvolume import CloudVolume
-from cloudvolume.datasource.precomputed.sharding import (
-    ShardReader,
-    ShardingSpecification,
-)
-from pathlib import Path
 from numpy.random import default_rng
 import numpy as np
+from tissue_map_tools.shard_util import get_ids_from_shard_files
 
 RNG = default_rng(42)
 
@@ -55,24 +51,7 @@ def view_precomputed_in_neuroglancer(
                 mesh_subpath = cv.meta.info["mesh"]
                 mesh_layer_name = mesh_layer_name if mesh_layer_name else mesh_subpath
                 if mesh_ids is None:
-                    mesh_path = Path(data_path) / mesh_layer_name
-                    meta = cv.mesh.meta
-                    cache = cv.mesh.cache
-                    data = cv.mesh.meta.info["sharding"]
-                    data["type"] = data["@type"]
-                    del data["@type"]
-                    sharding_specification = ShardingSpecification(**data)
-                    shard_reader = ShardReader(
-                        meta=meta, cache=cache, spec=sharding_specification
-                    )
-                    # list all shard files
-                    shard_files = [f for f in mesh_path.glob("*.shard")]
-                    mesh_ids = []
-                    for shard_file in shard_files:
-                        ids = shard_reader.list_labels(shard_file)
-                        ids = [int(id) for id in ids]
-                        mesh_ids.extend(ids)
-
+                    mesh_ids = get_ids_from_shard_files(data_path)
                 s.layers[mesh_layer_name] = neuroglancer.SegmentationLayer(
                     source=url + f"/{mesh_subpath}",
                     segments=mesh_ids,
@@ -132,7 +111,7 @@ def view_precomputed_in_napari(
 
     if show_meshes:
         if mesh_ids is None:
-            raise NotImplementedError("mesh_ids must be provided for mesh layers.")
+            mesh_ids = get_ids_from_shard_files(data_path)
 
         mesh_layer_name = mesh_layer_name if mesh_layer_name else cv.info["mesh"]
 
