@@ -1,5 +1,14 @@
 from typing import Literal, Any, Self
-from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ConfigDict,
+    field_validator,
+    model_validator,
+    conlist,
+    conint,
+    confloat,
+)
 from tissue_map_tools.data_model.sharded import ShardingSpecification
 from pathlib import PurePosixPath
 import re
@@ -91,17 +100,24 @@ class AnnotationById(BaseModel):
     key: str
     sharding: ShardingSpecification | None = None
 
-    _validate_key = field_validator("key")(validate_key_path)
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v):
+        return validate_key_path(v)
 
 
 class AnnotationSpatialLevel(BaseModel):
     key: str
     sharding: ShardingSpecification | None = None
-    grid_shape: list[int]
-    chunk_size: list[float]
-    limit: int
+    # maybe there is a better syntax that doesn't make mypy unhappy; but this works
+    grid_shape: conlist(conint(gt=0), min_length=1)  # type: ignore[valid-type]
+    chunk_size: conlist(confloat(gt=0), min_length=1)  # type: ignore[valid-type]
+    limit: conint(gt=0)  # type: ignore[valid-type]
 
-    _validate_key = field_validator("key")(validate_key_path)
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v):
+        return validate_key_path(v)
 
 
 class AnnotationInfo(BaseModel):
@@ -171,3 +187,17 @@ class AnnotationInfo(BaseModel):
                 raise ValueError(f"Duplicate relationship id found: {relationship.id}")
             seen_ids.add(relationship.id)
         return relationships
+
+    @model_validator(mode="after")
+    def _validate_spatial_rank(self) -> Self:
+        rank = self.rank
+        for i, spatial in enumerate(self.spatial):
+            if len(spatial.grid_shape) != rank:
+                raise ValueError(
+                    f"spatial[{i}].grid_shape length {len(spatial.grid_shape)} does not match rank {rank}"
+                )
+            if len(spatial.chunk_size) != rank:
+                raise ValueError(
+                    f"spatial[{i}].chunk_size length {len(spatial.chunk_size)} does not match rank {rank}"
+                )
+        return self

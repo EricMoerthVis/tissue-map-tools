@@ -276,3 +276,33 @@ def test_duplicate_relationship_ids():
     with pytest.raises(ValidationError) as excinfo:
         AnnotationInfo(**data)
     assert "Duplicate relationship id found: segment" in str(excinfo.value)
+
+
+def test_spatial_grid_shape_chunk_size_length_mismatch():
+    data = example_info()
+    # grid_shape too short
+    data["spatial"][0]["grid_shape"] = [1, 1]
+    with pytest.raises(ValidationError) as excinfo:
+        AnnotationInfo(**data)
+    assert "grid_shape length" in str(excinfo.value)
+
+    data = example_info()
+    # chunk_size too long
+    data["spatial"][0]["chunk_size"] = [1.0, 1.0, 1.0, 1.0]
+    with pytest.raises(ValidationError) as excinfo:
+        AnnotationInfo(**data)
+    assert "chunk_size length" in str(excinfo.value)
+
+
+def test_spatial_grid_shape_chunk_size_positive():
+    data = example_info()
+    data["spatial"][0]["grid_shape"] = [1, 0, 1]  # zero is not positive
+    with pytest.raises(ValidationError) as excinfo:
+        AnnotationInfo(**data)
+    assert "greater than 0" in str(excinfo.value)
+
+    data = example_info()
+    data["spatial"][0]["chunk_size"] = [1.0, -1.0, 1.0]  # negative is not positive
+    with pytest.raises(ValidationError) as excinfo:
+        AnnotationInfo(**data)
+    assert "greater than 0" in str(excinfo.value)
