@@ -3,70 +3,95 @@ This module is optional and contains convenience wrappers around igneous functio
 Igneous parameters are mostly not exposed and are chosen with the aim of producing
 sharded, multi-level-of-detail meshes from the largest raster scale and by
 parallelizing the computation.
-The user is strongly encouraged to use igneous directly if more control is needed.
+The user is strongly encouraged to use igneous directly when more control on the
+meshing operations is needed.
 
 Furthermore, please notice that Igneous is licensed under GPL-3.0; users with licensing
 constraints may consider using a separate library for converting the data to the
 sharded format and for creating meshes.
 """
 
-from igneous.task_creation.image import create_image_shard_transfer_tasks
 from igneous.task_creation.mesh import (
-    create_sharded_multires_mesh_from_unsharded_tasks,
+    create_meshing_tasks,
     create_sharded_multires_mesh_tasks,
-    create_xfer_meshes_tasks,
 )
-from cloudvolume import CloudVolume
 from taskqueue import LocalTaskQueue
 from pathlib import Path
+from xarray import DataArray, DataTree
+from tissue_map_tools.converters import (
+    from_ome_zarr_04_raster_to_precomputed_raster,
+    from_spatialdata_raster_to_precomputed_raster,
+)
+
+DEFAULT_NLOD = 4
 
 
-def from_unshared_precomputed_to_sharded_precomputed(
+def from_precomputed_raster_to_precomputed_meshes(
     data_path: str,
-    raster: bool = True,
-    meshes: bool = True,
+    mesh_name: str | None = None,
+    nlod: int = DEFAULT_NLOD,
     parallel: int | bool = True,
 ):
-    cv = CloudVolume(cloudpath=data_path)
-    raster_name = cv.info["scales"][0]["key"]
-    if "mesh" not in cv.meta.info:
-        meshes = False
-
     task_queue = LocalTaskQueue(parallel=parallel)
-    is_sharded = cv.image.is_sharded(mip=0)
 
-    if raster and not is_sharded:
-        raster_subpath = Path(cv.layerpath) / raster_name
-        task = create_image_shard_transfer_tasks(
-            src_layer_path=data_path, dst_layer_path=str(raster_subpath), mip=0
-        )
-        task_queue.insert(task)
-        pass
-        # igneous.
+    forge_task = create_meshing_tasks(
+        layer_path=data_path,
+        mip=0,
+        mesh_dir=mesh_name,
+        sharded=True,
+    )
+    task_queue.insert(forge_task)
+    task_queue.execute()
 
-    if meshes:
-        mesh_subpath = cv.meta.info["mesh"]
-
+    merge_task = create_sharded_multires_mesh_tasks(
+        cloudpath=data_path,
+        num_lod=nlod,
+    )
+    task_queue.insert(merge_task)
     task_queue.execute()
 
 
-def from_precomputed_raster_to_precomputed_meshes(parallel: int | bool = True):
-    pass
-
-
 def from_ome_zarr_04_raster_to_sharded_precomputed_raster_and_meshes(
+    ome_zarr_path: str | Path,
+    precomputed_path: str | Path,
+    is_labels: bool | None = None,
+    mesh_name: str | None = None,
+    nlod: int = DEFAULT_NLOD,
     parallel: int | bool = True,
 ):
-    pass
+    from_ome_zarr_04_raster_to_precomputed_raster(
+        ome_zarr_path=ome_zarr_path,
+        precomputed_path=precomputed_path,
+        is_labels=is_labels,
+    )
+    from_precomputed_raster_to_precomputed_meshes(
+        data_path=str(precomputed_path),
+        mesh_name=mesh_name,
+        nlod=nlod,
+        parallel=parallel,
+    )
 
 
 def from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
+    raster: DataArray | DataTree,
+    precomputed_path: str | Path,
+    mesh_name: str | None = None,
+    nlod: int = DEFAULT_NLOD,
     parallel: int | bool = True,
 ):
-    pass
+    from_spatialdata_raster_to_precomputed_raster(
+        raster=raster,
+        precomputed_path=precomputed_path,
+    )
+    from_precomputed_raster_to_precomputed_meshes(
+        data_path=str(precomputed_path),
+        mesh_name=mesh_name,
+        nlod=nlod,
+        parallel=parallel,
+    )
 
 
 if __name__ == "__main__":
-    from_unshared_precomputed_to_sharded_precomputed(
+    from_precomputed_raster_to_precomputed_meshes(
         data_path="/Users/macbook/Desktop/moffitt_precomputed",
     )

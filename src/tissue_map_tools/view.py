@@ -4,6 +4,10 @@ import warnings
 import napari
 import neuroglancer
 from cloudvolume import CloudVolume
+from cloudvolume.datasource.precomputed.sharding import (
+    ShardReader,
+    ShardingSpecification,
+)
 from pathlib import Path
 from numpy.random import default_rng
 import numpy as np
@@ -28,7 +32,7 @@ def view_precomputed_in_neuroglancer(
     cv = CloudVolume(cloudpath=data_path)
     data_type = cv.info["type"]
     # layer_name = layer_name if layer_name is not None else Path(cv.layerpath).name
-    layer_name = layer_name if layer_name is not None else cv.info['scales'][0]['key']
+    layer_name = layer_name if layer_name is not None else cv.info["scales"][0]["key"]
 
     if viewer is None:
         viewer = neuroglancer.Viewer()
@@ -50,6 +54,25 @@ def view_precomputed_in_neuroglancer(
             if "mesh" in cv.meta.info:
                 mesh_subpath = cv.meta.info["mesh"]
                 mesh_layer_name = mesh_layer_name if mesh_layer_name else mesh_subpath
+                if mesh_ids is None:
+                    mesh_path = Path(data_path) / mesh_layer_name
+                    meta = cv.mesh.meta
+                    cache = cv.mesh.cache
+                    data = cv.mesh.meta.info["sharding"]
+                    data["type"] = data["@type"]
+                    del data["@type"]
+                    sharding_specification = ShardingSpecification(**data)
+                    shard_reader = ShardReader(
+                        meta=meta, cache=cache, spec=sharding_specification
+                    )
+                    # list all shard files
+                    shard_files = [f for f in mesh_path.glob("*.shard")]
+                    mesh_ids = []
+                    for shard_file in shard_files:
+                        ids = shard_reader.list_labels(shard_file)
+                        ids = [int(id) for id in ids]
+                        mesh_ids.extend(ids)
+
                 s.layers[mesh_layer_name] = neuroglancer.SegmentationLayer(
                     source=url + f"/{mesh_subpath}",
                     segments=mesh_ids,
@@ -78,7 +101,7 @@ def view_precomputed_in_napari(
         viewer = napari.Viewer(ndisplay=3)
 
     cv = CloudVolume(data_path)
-    layer_name = layer_name if layer_name is not None else cv.info['scales'][0]['key']
+    layer_name = layer_name if layer_name is not None else cv.info["scales"][0]["key"]
 
     if show_raster:
         raster = cv.to_dask()
@@ -111,7 +134,7 @@ def view_precomputed_in_napari(
         if mesh_ids is None:
             raise NotImplementedError("mesh_ids must be provided for mesh layers.")
 
-        mesh_layer_name = mesh_layer_name if mesh_layer_name else cv.info['mesh']
+        mesh_layer_name = mesh_layer_name if mesh_layer_name else cv.info["mesh"]
 
         meshes = cv.mesh.get(segids=mesh_ids[1:])
 

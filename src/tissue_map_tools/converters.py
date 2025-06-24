@@ -6,6 +6,7 @@ from cloudvolume.dask import to_cloudvolume
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
 from xarray import DataArray, DataTree
+from dask.dataframe import DataFrame as DaskDataFrame
 
 # behavior around this should be improved and made consistent across all the functions
 # that convert to precomputed format
@@ -16,7 +17,7 @@ def from_ome_zarr_04_raster_to_precomputed_raster(
     ome_zarr_path: str | Path,
     precomputed_path: str | Path,
     is_labels: bool | None = None,
-):
+) -> None:
     """
     Convert OME-Zarr v0.4 to Precomputed format.
 
@@ -163,7 +164,7 @@ def _transpose_dask_data_for_cloudvolume(
 def from_spatialdata_raster_to_precomputed_raster(
     raster: DataArray | DataTree,
     precomputed_path: str | Path,
-):
+) -> None:
     import spatialdata as sd
 
     model = sd.models.get_model(raster)
@@ -204,9 +205,21 @@ def from_spatialdata_raster_to_precomputed_raster(
     )
 
 
+def from_spatialdata_points_to_precomputed_points(
+    points: DaskDataFrame,
+    precomputed_path: str | Path,
+) -> None:
+    pass
+
+
 if __name__ == "__main__":
     from_ome_zarr_04_raster_to_precomputed_raster(
         ome_zarr_path="../../out/20_1_gloms/0",
         precomputed_path="../../out/20_1_gloms_precomputed",
         # is_labels=False,
     )
+    # from_ome_zarr_04_raster_to_precomputed_raster(
+    #     ome_zarr_path="../../out/20_1_gloms/0",
+    #     precomputed_path="../../out/20_1_gloms_precomputed",
+    #     # is_labels=False,
+    # )
