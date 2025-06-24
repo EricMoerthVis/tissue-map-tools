@@ -7,6 +7,10 @@ from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
 from xarray import DataArray, DataTree
 from dask.dataframe import DataFrame as DaskDataFrame
+from numpy.random import default_rng
+import pandas as pd
+
+RNG = default_rng(42)
 
 # behavior around this should be improved and made consistent across all the functions
 # that convert to precomputed format
@@ -206,20 +210,71 @@ def from_spatialdata_raster_to_precomputed_raster(
 
 
 def from_spatialdata_points_to_precomputed_points(
-    points: DaskDataFrame,
+    points: DaskDataFrame | pd.DataFrame,
     precomputed_path: str | Path,
 ) -> None:
+    """
+
+    Parameters
+    ----------
+    points
+    precomputed_path
+
+    Returns
+    -------
+
+    Notes
+    -----
+    Only unshared points supported at the moment.
+    """
+    if isinstance(points, DaskDataFrame):
+        points = points.compute()
+    # the neuroglancer specs also allow for "rgb" and "rgba", but these are not native
+    # Python types
+    SUPPORTED_DTYPES = [
+        np.uint32,
+        np.int32,
+        np.float32,
+        np.uint16,
+        np.int16,
+        np.uint8,
+        np.int8,
+        "category",
+    ]
+    for column in points.columns:
+        dtype = points[column].dtype
+        if dtype not in SUPPORTED_DTYPES:
+            raise ValueError(
+                f"Unsupported dtype {dtype} for column {column}. "
+                f"Supported dtypes are: {SUPPORTED_DTYPES}"
+            )
     pass
 
 
 if __name__ == "__main__":
-    from_ome_zarr_04_raster_to_precomputed_raster(
-        ome_zarr_path="../../out/20_1_gloms/0",
-        precomputed_path="../../out/20_1_gloms_precomputed",
-        # is_labels=False,
-    )
     # from_ome_zarr_04_raster_to_precomputed_raster(
     #     ome_zarr_path="../../out/20_1_gloms/0",
     #     precomputed_path="../../out/20_1_gloms_precomputed",
     #     # is_labels=False,
     # )
+    #
+    # from_ome_zarr_04_raster_to_precomputed_raster(
+    #     ome_zarr_path="../../out/20_1_gloms/0",
+    #     precomputed_path="../../out/20_1_gloms_precomputed",
+    #     # is_labels=False,
+    # )
+    #
+    N_POINTS = 1_000
+    df = pd.DataFrame(
+        {
+            "x": RNG.random(N_POINTS, dtype=np.float32),
+            "y": RNG.random(N_POINTS, dtype=np.float32),
+            "z": RNG.random(N_POINTS, dtype=np.float32),
+            "intensity": RNG.integers(0, 255, N_POINTS, dtype=np.uint32),
+            "categorical": RNG.choice(["a", "b", "c"], N_POINTS),
+        }
+    )
+    df["categorical"] = df["categorical"].astype("category")
+    from_spatialdata_points_to_precomputed_points(
+        points=df, precomputed_path="/Users/macbook/Desktop/test_precomputed_points"
+    )
