@@ -7,7 +7,7 @@ authors = [
     { name = "Eric Moerth", email = "ericmoerth@g.harvard.edu" },
     { name = "Luca Marconato", email = "luca.marconato@embl.de" }
 ]
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11"
 dependencies = [
     "zmesh>=1.0.0",
     "trimesh",
