@@ -1,6 +1,17 @@
 import pytest
+import numpy as np
+import tempfile
+from pathlib import Path
 from pydantic import ValidationError
-from tissue_map_tools.data_model.annotations import AnnotationInfo
+from tissue_map_tools.data_model.annotations import (
+    AnnotationInfo,
+    decode_annotation_id_index,
+    encode_annotation_id_index,
+    write_annotation_id_index,
+    read_annotation_id_index,
+    write_related_object_id_index,
+    read_related_object_id_index,
+)
 
 
 def example_sharding():
@@ -25,6 +36,13 @@ def example_info():
         "properties": [
             {"id": "color", "type": "rgb"},
             {"id": "confidence", "type": "float32", "description": "Score"},
+            {
+                "id": "cell_type",
+                "type": "uint8",
+                "description": "Cell type",
+                "enum_values": [0, 1, 2],
+                "enum_labels": ["A", "B", "C"],
+            },
         ],
         "relationships": [
             {"id": "segment", "key": "segments", "sharding": example_sharding()}
@@ -306,3 +324,210 @@ def test_spatial_grid_shape_chunk_size_positive():
     with pytest.raises(ValidationError) as excinfo:
         AnnotationInfo(**data)
     assert "greater than 0" in str(excinfo.value)
+
+
+def test_roundtrip_point():
+    """Test roundtrip for a POINT annotation."""
+    info = AnnotationInfo(**example_info())
+
+    positions_values = [10.0, 20.0, 30.0]
+    properties_values = {"color": [255, 128, 0], "confidence": 0.95, "cell_type": 1}
+    relationships_values = {"segment": [1001, 1002]}
+
+    encoded = encode_annotation_id_index(
+        info=info,
+        positions_values=positions_values,
+        properties_values=properties_values,
+        relationships_values=relationships_values,
+    )
+    decoded_pos, decoded_props, decoded_rels = decode_annotation_id_index(
+        info=info, data=encoded
+    )
+
+    assert np.allclose(positions_values, decoded_pos)
+    assert properties_values["color"] == decoded_props["color"]
+    assert np.allclose(properties_values["confidence"], decoded_props["confidence"])
+    assert properties_values["cell_type"] == decoded_props["cell_type"]
+    assert relationships_values == decoded_rels
+
+
+def test_roundtrip_line_missing_relationship():
+    """Test roundtrip for a LINE annotation with a missing relationship."""
+    line_info_dict = example_info()
+    line_info_dict["annotation_type"] = "LINE"
+    info = AnnotationInfo(**line_info_dict)
+
+    positions_values = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    properties_values = {"color": [255, 128, 0], "confidence": 0.95, "cell_type": 2}
+    relationships_values = {}  # Missing 'segment' relationship
+
+    encoded = encode_annotation_id_index(
+        info=info,
+        positions_values=positions_values,
+        properties_values=properties_values,
+        relationships_values=relationships_values,
+    )
+    decoded_pos, decoded_props, decoded_rels = decode_annotation_id_index(
+        info=info, data=encoded
+    )
+
+    assert np.allclose(positions_values, decoded_pos)
+    assert properties_values["color"] == decoded_props["color"]
+    assert np.allclose(properties_values["confidence"], decoded_props["confidence"])
+    assert properties_values["cell_type"] == decoded_props["cell_type"]
+    assert {"segment": []} == decoded_rels
+
+
+def test_roundtrip_decode_encode():
+    """Test that decoding and re-encoding gives the same result."""
+    info = AnnotationInfo(**example_info())
+    positions_values = [15.0, 25.0, 35.0]
+    properties_values = {"color": [10, 20, 30], "confidence": 0.5, "cell_type": 0}
+    relationships_values = {"segment": [2001]}
+
+    original_encoded = encode_annotation_id_index(
+        info=info,
+        positions_values=positions_values,
+        properties_values=properties_values,
+        relationships_values=relationships_values,
+    )
+
+    decoded_pos, decoded_props, decoded_rels = decode_annotation_id_index(
+        info=info, data=original_encoded
+    )
+    re_encoded = encode_annotation_id_index(
+        info=info,
+        positions_values=decoded_pos,
+        properties_values=decoded_props,
+        relationships_values=decoded_rels,
+    )
+
+    assert original_encoded == re_encoded
+
+
+def test_write_read_annotation_id_index():
+    """Test writing and reading the annotation ID index."""
+    info = AnnotationInfo(**example_info())
+    info.by_id.sharding = None
+
+    annotations = {
+        1: (
+            [10.0, 20.0, 30.0],
+            {"color": [255, 0, 0], "confidence": 0.9, "cell_type": 1},
+            {"segment": [101, 102]},
+        ),
+        2: (
+            [40.0, 50.0, 60.0],
+            {"color": [0, 255, 0], "confidence": 0.8, "cell_type": 2},
+            {"segment": [103]},
+        ),
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root_path = Path(temp_dir)
+
+        # Test writing
+        write_annotation_id_index(
+            root_path=root_path, annotations=annotations, info=info
+        )
+
+        # Check that files were created
+        index_dir = root_path / info.by_id.key
+        assert (index_dir / "1").is_file()
+        assert (index_dir / "2").is_file()
+
+        # Test reading
+        read_annotations = read_annotation_id_index(root_path, info)
+
+        # Test consistency
+        assert len(annotations) == len(read_annotations)
+        for ann_id, original_data in annotations.items():
+            read_data = read_annotations[ann_id]
+            original_pos, original_props, original_rels = original_data
+            read_pos, read_props, read_rels = read_data
+
+            assert original_pos == read_pos
+            assert original_props["color"] == read_props["color"]
+            assert np.allclose(original_props["confidence"], read_props["confidence"])
+            assert original_props["cell_type"] == read_props["cell_type"]
+            assert original_rels == read_rels
+
+
+def test_write_read_related_object_id_index():
+    """Test writing and reading the related object ID index."""
+    info = AnnotationInfo(**example_info())
+    # Test unsharded case
+    for rel in info.relationships:
+        rel.sharding = None
+
+    annotations_by_object_id = {
+        "segment": {
+            101: [
+                (
+                    1,  # annotation_id
+                    [10.0, 20.0, 30.0],  # positions
+                    {
+                        "color": [255, 0, 0],
+                        "confidence": 0.9,
+                        "cell_type": 1,
+                    },  # properties
+                )
+            ],
+            102: [
+                (
+                    1,
+                    [10.0, 20.0, 30.0],
+                    {"color": [255, 0, 0], "confidence": 0.9, "cell_type": 1},
+                ),
+                (
+                    2,
+                    [40.0, 50.0, 60.0],
+                    {"color": [0, 255, 0], "confidence": 0.8, "cell_type": 2},
+                ),
+            ],
+        }
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root_path = Path(temp_dir)
+
+        write_related_object_id_index(
+            root_path=root_path,
+            info=info,
+            annotations_by_object_id=annotations_by_object_id,
+        )
+
+        rel_key = info.relationships[0].key
+        index_dir = root_path / rel_key
+        assert (index_dir / "101").is_file()
+        assert (index_dir / "102").is_file()
+
+        read_data = read_related_object_id_index(root_path, info)
+
+        assert annotations_by_object_id.keys() == read_data.keys()
+        for rel_id, original_rel_data in annotations_by_object_id.items():
+            read_rel_data = read_data[rel_id]
+            assert original_rel_data.keys() == read_rel_data.keys()
+            for obj_id, original_ann_list in original_rel_data.items():
+                read_ann_list = read_rel_data[obj_id]
+                assert len(original_ann_list) == len(read_ann_list)
+                for i in range(len(original_ann_list)):
+                    original_ann_id, original_pos, original_props = original_ann_list[i]
+                    read_ann_id, read_pos, read_props = read_ann_list[i]
+
+                    assert original_ann_id == read_ann_id
+                    assert np.allclose(original_pos, read_pos)
+                    assert original_props["color"] == read_props["color"]
+                    assert np.allclose(
+                        original_props["confidence"], read_props["confidence"]
+                    )
+                    assert original_props["cell_type"] == read_props["cell_type"]
+
+
+def test_enum_in_example_info():
+    """Test that enum properties are correctly parsed from the example info."""
+    info = AnnotationInfo(**example_info())
+    prop = next((p for p in info.properties if p.id == "cell_type"), None)
+    assert prop is not None
+    assert prop.enum_values == [0, 1, 2]
+    assert prop.enum_labels == ["A", "B", "C"]

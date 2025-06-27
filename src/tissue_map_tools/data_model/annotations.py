@@ -12,6 +12,8 @@ from pydantic import (
 from tissue_map_tools.data_model.sharded import ShardingSpecification
 from pathlib import PurePosixPath
 import re
+import struct
+from pathlib import Path
 
 
 class AnnotationProperty(BaseModel):
@@ -201,3 +203,353 @@ class AnnotationInfo(BaseModel):
                     f"spatial[{i}].chunk_size length {len(spatial.chunk_size)} does not match rank {rank}"
                 )
         return self
+
+
+def encode_positions_and_properties(
+    info: AnnotationInfo,
+    positions_values: list[float],
+    properties_values: dict[str, Any],
+) -> bytes:
+    """
+    Encode positions and properties of a single annotation to binary format.
+    """
+    rank = info.rank
+    buf = bytearray()
+    # 1. Encode geometry
+    if info.annotation_type == "POINT":
+        buf += struct.pack(f"<{rank}f", *positions_values)
+    elif info.annotation_type in ("LINE", "AXIS_ALIGNED_BOUNDING_BOX", "ELLIPSOID"):
+        buf += struct.pack(f"<{2 * rank}f", *positions_values)
+    else:
+        raise ValueError(f"Unknown annotation_type: {info.annotation_type}")
+
+    # 2. Encode properties in order
+    for prop in info.properties:
+        value = properties_values[prop.id]
+        if prop.type in ("uint32", "int32", "float32"):
+            fmt = {"uint32": "<I", "int32": "<i", "float32": "<f"}[prop.type]
+            buf += struct.pack(fmt, value)
+        elif prop.type in ("uint16", "int16"):
+            fmt = {"uint16": "<H", "int16": "<h"}[prop.type]
+            buf += struct.pack(fmt, value)
+        elif prop.type in ("uint8", "int8"):
+            fmt = {"uint8": "<B", "int8": "<b"}[prop.type]
+            buf += struct.pack(fmt, value)
+        elif prop.type == "rgb":
+            buf += struct.pack("<3B", *value)
+        elif prop.type == "rgba":
+            buf += struct.pack("<4B", *value)
+        else:
+            raise ValueError(f"Unknown property type: {prop.type}")
+
+    # 3. Pad to 4-byte boundary
+    pad = (4 - (len(buf) % 4)) % 4
+    buf += b"\x00" * pad
+    return bytes(buf)
+
+
+def decode_positions_and_properties(
+    data: bytes,
+    info: AnnotationInfo,
+    offset: int = 0,
+) -> tuple[list[float], dict[str, Any], int]:
+    """
+    Decode positions and properties of a single annotation from binary format.
+    Returns (positions_values, properties_values, offset)
+    """
+    rank = info.rank
+    # 1. Decode geometry
+    if info.annotation_type == "POINT":
+        n_floats = rank
+    elif info.annotation_type in ("LINE", "AXIS_ALIGNED_BOUNDING_BOX", "ELLIPSOID"):
+        n_floats = 2 * rank
+    else:
+        raise ValueError(f"Unknown annotation_type: {info.annotation_type}")
+    positions_values = list(struct.unpack_from(f"<{n_floats}f", data, offset))
+    offset += 4 * n_floats
+
+    # 2. Decode properties in order
+    properties_values = {}
+    for prop in info.properties:
+        if prop.type == "uint32":
+            (value,) = struct.unpack_from("<I", data, offset)
+            offset += 4
+        elif prop.type == "int32":
+            (value,) = struct.unpack_from("<i", data, offset)
+            offset += 4
+        elif prop.type == "float32":
+            (value,) = struct.unpack_from("<f", data, offset)
+            offset += 4
+        elif prop.type == "uint16":
+            (value,) = struct.unpack_from("<H", data, offset)
+            offset += 2
+        elif prop.type == "int16":
+            (value,) = struct.unpack_from("<h", data, offset)
+            offset += 2
+        elif prop.type == "uint8":
+            (value,) = struct.unpack_from("<B", data, offset)
+            offset += 1
+        elif prop.type == "int8":
+            (value,) = struct.unpack_from("<b", data, offset)
+            offset += 1
+        elif prop.type == "rgb":
+            value = list(struct.unpack_from("<3B", data, offset))
+            offset += 3
+        elif prop.type == "rgba":
+            value = list(struct.unpack_from("<4B", data, offset))
+            offset += 4
+        else:
+            raise ValueError(f"Unknown property type: {prop.type}")
+        properties_values[prop.id] = value
+
+    # 3. Skip padding to 4-byte boundary
+    pad = (4 - (offset % 4)) % 4
+    offset += pad
+    return positions_values, properties_values, offset
+
+
+def encode_annotation_id_index(
+    info: AnnotationInfo,
+    positions_values: list[float],
+    properties_values: dict[str, Any],
+    relationships_values: dict[str, list[int]],
+) -> bytes:
+    """
+    Encode a single annotation of the annotation ID index to binary format.
+
+    Notes
+    -------
+    This encoding makes use of the "single annotation encoding" approach, i.e. it
+    encodes a single annotation with its positions, properties, and relationships.
+    """
+    buf = bytearray(
+        encode_positions_and_properties(
+            info=info,
+            positions_values=positions_values,
+            properties_values=properties_values,
+        )
+    )
+
+    # Encode relationships
+    for rel in info.relationships:
+        rel_ids = relationships_values.get(rel.id, [])
+        buf += struct.pack("<I", len(rel_ids))
+        for rid in rel_ids:
+            buf += struct.pack("<Q", rid)
+
+    return bytes(buf)
+
+
+def decode_annotation_id_index(
+    data: bytes,
+    info: AnnotationInfo,
+) -> tuple[list[float], dict[str, Any], dict[str, list[int]]]:
+    positions_values, properties_values, offset = decode_positions_and_properties(
+        data=data, info=info
+    )
+
+    # 4. Decode relationships
+    relationships_values = {}
+    for rel in info.relationships:
+        (num_ids,) = struct.unpack_from("<I", data, offset)
+        offset += 4
+        ids = []
+        for _ in range(num_ids):
+            (rid,) = struct.unpack_from("<Q", data, offset)
+            offset += 8
+            ids.append(rid)
+        relationships_values[rel.id] = ids
+
+    return positions_values, properties_values, relationships_values
+
+
+def encode_related_object_id_index(
+    info: AnnotationInfo,
+    annotations: list[tuple[int, list[float], dict[str, Any]]],
+) -> bytes:
+    """
+    Encode a list of annotations for the related object ID index.
+    This should only encode positions and properties, not relationships.
+    """
+    buf = bytearray()
+    count = len(annotations)
+    buf += struct.pack("<Q", count)
+
+    # Encode positions and properties for all annotations
+    for _, positions_values, properties_values in annotations:
+        buf += encode_positions_and_properties(
+            info=info,
+            positions_values=positions_values,
+            properties_values=properties_values,
+        )
+
+    # Encode annotation ids for all annotations
+    for ann_id, _, _ in annotations:
+        buf += struct.pack("<Q", ann_id)
+
+    return bytes(buf)
+
+
+def decode_related_object_id_index(
+    data: bytes,
+    info: AnnotationInfo,
+) -> list[tuple[int, list[float], dict[str, Any]]]:
+    """
+    Decode a list of annotations for the related object ID index.
+    This should only decode positions and properties, not relationships.
+    """
+    (count,) = struct.unpack_from("<Q", data)
+    offset = 8
+
+    decoded_annotations_data = []
+    # First pass: decode positions and properties
+    for _ in range(count):
+        positions_values, properties_values, offset = decode_positions_and_properties(
+            data=data,
+            info=info,
+            offset=offset,
+        )
+        decoded_annotations_data.append((positions_values, properties_values))
+
+    # Second pass: decode annotation ids
+    decoded_annotations = []
+    for i in range(count):
+        (ann_id,) = struct.unpack_from("<Q", data, offset)
+        offset += 8
+        positions_values, properties_values = decoded_annotations_data[i]
+        decoded_annotations.append((ann_id, positions_values, properties_values))
+
+    return decoded_annotations
+
+
+def write_annotation_id_index(
+    root_path: Path,
+    annotations: dict[int, tuple[list[float], dict[str, Any], dict[str, list[int]]]],
+    info: AnnotationInfo,
+):
+    """
+    Write the annotation ID index to disk (unsharded format).
+    """
+    if info.by_id.sharding is not None:
+        raise NotImplementedError(
+            "Sharded annotation ID index writing is not implemented."
+        )
+
+    index_dir = root_path / info.by_id.key
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    for annotation_id, (positions, properties, relationships) in annotations.items():
+        encoded_data = encode_annotation_id_index(
+            info=info,
+            positions_values=positions,
+            properties_values=properties,
+            relationships_values=relationships,
+        )
+        with open(index_dir / str(annotation_id), "wb") as f:
+            f.write(encoded_data)
+
+
+def read_annotation_id_index(
+    root_path: Path,
+    info: AnnotationInfo,
+) -> dict[int, tuple[list[float], dict[str, Any], dict[str, list[int]]]]:
+    """
+    Read the annotation ID index from disk (unsharded format).
+    """
+    if info.by_id.sharding is not None:
+        raise NotImplementedError(
+            "Sharded annotation ID index reading is not implemented."
+        )
+
+    index_dir = root_path / info.by_id.key
+    if not index_dir.is_dir():
+        raise FileNotFoundError(
+            f"Annotation ID index directory '{index_dir}' does not exist."
+        )
+
+    annotations = {}
+    for fpath in index_dir.iterdir():
+        if fpath.is_file():
+            if re.match(r"^\d+$", fpath.name) is None:
+                # Ignore files that are not valid uint64 ids
+                continue
+            annotation_id = int(fpath.name)
+
+            with open(fpath, "rb") as f:
+                encoded_data = f.read()
+
+            decoded_data = decode_annotation_id_index(data=encoded_data, info=info)
+            annotations[annotation_id] = decoded_data
+    return annotations
+
+
+def write_related_object_id_index(
+    root_path: Path,
+    info: AnnotationInfo,
+    annotations_by_object_id: dict[
+        str,
+        dict[int, list[tuple[int, list[float], dict[str, Any]]]],
+    ],
+):
+    """
+    Write the related object ID index to disk (unsharded format).
+    `annotations_by_object_id` is a dict mapping relationship id to a dict mapping object id to a list of annotations.
+    """
+    for rel in info.relationships:
+        if rel.sharding is not None:
+            raise NotImplementedError(
+                f"Sharded related object ID index writing for relationship '{rel.id}' is not implemented."
+            )
+
+        index_dir = root_path / rel.key
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        if rel.id in annotations_by_object_id:
+            for (
+                object_id,
+                annotations,
+            ) in annotations_by_object_id[rel.id].items():
+                encoded_data = encode_related_object_id_index(
+                    info=info,
+                    annotations=annotations,
+                )
+                with open(index_dir / str(object_id), "wb") as f:
+                    f.write(encoded_data)
+
+
+def read_related_object_id_index(
+    root_path: Path,
+    info: AnnotationInfo,
+) -> dict[str, dict[int, list[tuple[int, list[float], dict[str, Any]]]]]:
+    """
+    Read the related object ID index from disk (unsharded format).
+    """
+    all_relationships_data = {}
+    for rel in info.relationships:
+        if rel.sharding is not None:
+            raise NotImplementedError(
+                f"Sharded related object ID index reading for relationship '{rel.id}' is not implemented."
+            )
+
+        index_dir = root_path / rel.key
+        if not index_dir.is_dir():
+            raise FileNotFoundError(
+                f"Related object ID index directory '{index_dir}' does not exist."
+            )
+
+        relationship_data = {}
+        for fpath in index_dir.iterdir():
+            if fpath.is_file():
+                if re.match(r"^\d+$", fpath.name) is None:
+                    continue
+                object_id = int(fpath.name)
+
+                with open(fpath, "rb") as f:
+                    encoded_data = f.read()
+
+                decoded_data = decode_related_object_id_index(
+                    data=encoded_data, info=info
+                )
+                relationship_data[object_id] = decoded_data
+        all_relationships_data[rel.id] = relationship_data
+    return all_relationships_data
