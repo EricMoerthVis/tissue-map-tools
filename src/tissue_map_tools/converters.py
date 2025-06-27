@@ -14,6 +14,8 @@ from scipy.spatial import KDTree
 from numpy.typing import NDArray
 import matplotlib.pyplot as plt
 
+from tissue_map_tools.data_model.annotations import AnnotationInfo
+
 RNG = default_rng(42)
 
 # behavior around this should be improved and made consistent across all the functions
@@ -217,6 +219,7 @@ class GridLevel:
     level: int
     grid_shape: list[int]
     chunk_size: NDArray[float]
+    limit: int
 
     def __init__(
         self,
@@ -224,6 +227,7 @@ class GridLevel:
         grid_shape: list[int],
         mins: NDArray[float],
         maxs: NDArray[float],
+        limit: int,
         parent_cells: list[tuple[int, int, int]],
         parent_grid_shape: list[int],
     ) -> None:
@@ -231,6 +235,7 @@ class GridLevel:
         self.grid_shape = grid_shape
         self.mins = mins
         self.maxs = maxs
+        self.limit = limit
 
         # derived quantities
         self.sizes = np.array(maxs) - np.array(mins)
@@ -344,6 +349,7 @@ def from_spatialdata_points_to_precomputed_points(
                 f"Unsupported dtype {dtype} for column {column}. "
                 f"Supported dtypes are: {SUPPORTED_DTYPES}"
             )
+    # TODO: we can generalize to 2D points. 1D points do not make much sense
     xyz = points[["x", "y", "z"]].values
     tree = KDTree(xyz)
 
@@ -358,6 +364,7 @@ def from_spatialdata_points_to_precomputed_points(
         grid_shape=starting_grid_shape,
         mins=mins,
         maxs=maxs,
+        limit=limit,
         parent_cells=[(0, 0, 0)],
         parent_grid_shape=starting_grid_shape,
     )
@@ -368,14 +375,13 @@ def from_spatialdata_points_to_precomputed_points(
     while len(remaining_indices) > 0:
         # initialization
         grid[grid_level.level] = grid_level
-        if PRINT_DEBUG:
+        if PRINT_DEBUG or True:
             print(
                 f"Processing grid level {grid_level.level} with shape {grid_level.grid_shape} "
                 f"and chunk size {grid_level.chunk_size}. Remaining points: {len(remaining_indices)}"
             )
 
         # main logic
-        active_cells = []
         if PRINT_DEBUG:
             print("Active cells: ", grid_level.cells)
         for i, j, k in grid_level.iter_cells():
@@ -417,7 +423,6 @@ def from_spatialdata_points_to_precomputed_points(
                     emitted = indices
                 else:
                     emitted = RNG.choice(indices, size=limit, replace=False)
-                    active_cells.append((i, j, k))
                 if PRINT_DEBUG:
                     print(
                         f"Emitting {len(emitted)} points for grid cell ({i}, {j}, {k})"
@@ -484,7 +489,8 @@ def from_spatialdata_points_to_precomputed_points(
             grid_shape=grid_level.get_next_grid_shape(),
             mins=grid_level.mins,
             maxs=grid_level.maxs,
-            parent_cells=active_cells,
+            limit=limit,
+            parent_cells=list(grid_level.populated_cells.keys()),
             parent_grid_shape=grid_level.grid_shape,
         )
 
@@ -495,6 +501,36 @@ def from_spatialdata_points_to_precomputed_points(
                 "grid size being too small."
             )
         previous_remaining_indices = len(remaining_indices)
+
+    print('spatial index computed, now saving to precomputed format')
+    pass
+    # TODO: ensure that the data is anisotropic, the dimensions belows need to be
+    #  adjusted
+    ##
+    kw = {
+        "@type": "neuroglancer_annotations_v1",
+        "dimensions": {"x": [1.0, "m"], "y": [1.0, "m"], "z": [1.0, "m"]},
+        "lower_bound": grid[0].mins,
+        "upper_bound": grid[0].maxs,
+        "annotation_type": "POINT",
+        "properties": [],
+        "relationships": [],
+        "by_id": {"key": "by_id", "sharding": None},
+        "spatial": [],
+    }
+    for grid_level in grid.values():
+        spatial = {
+            "key": f"spatial{grid_level.level}",
+            "sharding": None,
+            "grid_shape": grid_level.grid_shape,
+            "chunk_size": grid_level.chunk_size.tolist(),
+            "limit": grid_level.limit,
+        }
+        kw["spatial"].append(spatial)
+    annotation_info = AnnotationInfo(**kw)
+    print(annotation_info.model_dump_json(indent=4))
+    pass
+    ##
 
 
 if __name__ == "__main__":
@@ -510,7 +546,8 @@ if __name__ == "__main__":
     #     # is_labels=False,
     # )
     #
-    N_POINTS = 1_000_000
+    # N_POINTS = 100_000_000
+    N_POINTS = 10_000
     # N_POINTS = 101
     df = pd.DataFrame(
         {
@@ -525,5 +562,5 @@ if __name__ == "__main__":
     from_spatialdata_points_to_precomputed_points(
         points=df,
         precomputed_path="/Users/macbook/Desktop/test_precomputed_points",
-        limit=15,
+        limit=1000,
     )
