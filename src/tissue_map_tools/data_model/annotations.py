@@ -27,6 +27,28 @@ RNG = default_rng(42)
 PRINT_DEBUG = True
 VISUAL_DEBUG = False
 
+ValidNumericNDArray = (
+    NDArray[np.uint8]
+    | NDArray[np.int8]
+    | NDArray[np.uint16]
+    | NDArray[np.int16]
+    | NDArray[np.uint32]
+    | NDArray[np.int32]
+    | NDArray[np.float32]
+)
+# the neuroglancer specs also allow for "rgb" and "rgba", but these are not native
+# Python types
+SUPPORTED_DTYPES = [
+    np.uint32,
+    np.int32,
+    np.float32,
+    np.uint16,
+    np.int16,
+    np.uint8,
+    np.int8,
+    "category",
+]
+
 
 class AnnotationProperty(BaseModel):
     id: str
@@ -208,7 +230,7 @@ class AnnotationInfo(BaseModel):
         return self
 
 
-def encode_positions_and_properties(
+def encode_positions_and_properties_via_single_annotation(
     info: AnnotationInfo,
     positions_values: list[float],
     properties_values: dict[str, Any],
@@ -229,6 +251,10 @@ def encode_positions_and_properties(
     -------
     bytes
         The encoded binary data representing the annotation.
+
+    Notes
+    -----
+    This function is used internally to encode the data for the various indexes.
     """
     rank = info.rank
     buf = bytearray()
@@ -265,7 +291,7 @@ def encode_positions_and_properties(
     return bytes(buf)
 
 
-def decode_positions_and_properties(
+def decode_positions_and_properties_via_single_annotation(
     info: AnnotationInfo,
     data: bytes,
     offset: int = 0,
@@ -342,14 +368,14 @@ def decode_positions_and_properties(
     return positions_values, properties_values, offset
 
 
-def encode_annotation_id_index(
+def encode_positions_and_properties_and_relationships_via_single_annotation(
     info: AnnotationInfo,
     positions_values: list[float],
     properties_values: dict[str, Any],
     relationships_values: dict[str, list[int]],
 ) -> bytes:
     """
-    Encode a single annotation of the annotation ID index to binary format.
+    Encode positions, properties and relationships using the single annotation encoding
 
     Parameters
     ----------
@@ -367,9 +393,13 @@ def encode_annotation_id_index(
     bytes
         The encoded binary data representing the annotation, including positions,
         properties, and relationships.
+
+    Notes
+    -----
+    This encoding is used for the annotation ID index
     """
     buf = bytearray(
-        encode_positions_and_properties(
+        encode_positions_and_properties_via_single_annotation(
             info=info,
             positions_values=positions_values,
             properties_values=properties_values,
@@ -386,12 +416,12 @@ def encode_annotation_id_index(
     return bytes(buf)
 
 
-def decode_annotation_id_index(
+def decode_positions_and_properties_and_relationships_via_single_annotation(
     info: AnnotationInfo,
     data: bytes,
 ) -> tuple[list[float], dict[str, Any], dict[str, list[int]]]:
     """
-    Decode a single annotation of the annotation ID index from binary format.
+    Decode positions, properties and relationships from binary data (single annotation)
 
     Parameters
     ----------
@@ -408,9 +438,13 @@ def decode_annotation_id_index(
         The decoded property values.
     relationships_values
         The decoded relationship values.
+
+    Notes
+    -----
+    This decoding is used for the annotation ID index.
     """
-    positions_values, properties_values, offset = decode_positions_and_properties(
-        data=data, info=info
+    positions_values, properties_values, offset = (
+        decode_positions_and_properties_via_single_annotation(data=data, info=info)
     )
 
     # 4. Decode relationships
@@ -428,12 +462,12 @@ def decode_annotation_id_index(
     return positions_values, properties_values, relationships_values
 
 
-def encode_related_object_id_index(
+def encode_positions_and_properties_via_multiple_annotation(
     info: AnnotationInfo,
     annotations: list[tuple[int, list[float], dict[str, Any]]],
 ) -> bytes:
     """
-    Encode a list of annotations for the related object ID index.
+    Encode via positions and properties via the multiple annotation encoding.
 
     Parameters
     ----------
@@ -451,9 +485,8 @@ def encode_related_object_id_index(
 
     Notes
     -----
-    This encoding makes use of the "multiple annotation encoding"; each individual
-    encoding follows the "single annotation encoding" approach, but only encodes
-    positions and properties, not relationships.
+    This encoding is used for the related object ID index and for the spatial index.
+    Note that relationships are not encoded in this function.
     """
     buf = bytearray()
     count = len(annotations)
@@ -461,7 +494,7 @@ def encode_related_object_id_index(
 
     # Encode positions and properties for all annotations
     for _, positions_values, properties_values in annotations:
-        buf += encode_positions_and_properties(
+        buf += encode_positions_and_properties_via_single_annotation(
             info=info,
             positions_values=positions_values,
             properties_values=properties_values,
@@ -474,12 +507,12 @@ def encode_related_object_id_index(
     return bytes(buf)
 
 
-def decode_related_object_id_index(
+def decode_positions_and_properties_via_multiple_annotation(
     info: AnnotationInfo,
     data: bytes,
 ) -> list[tuple[int, list[float], dict[str, Any]]]:
     """
-    Decode a list of annotations for the related object ID index.
+    Decode positions and properties from binary data (multiple annotation encoding)
 
     Parameters
     ----------
@@ -492,6 +525,11 @@ def decode_related_object_id_index(
     -------
     A list of tuples, each containing the annotation ID, position values, and
     property values. Relationships are not decoded in this function.
+
+    Notes
+    -----
+    This decoding is used for the related object ID index and for the spatial index.
+    Note that relationships are not decoded in this function.
     """
     (count,) = struct.unpack_from("<Q", data)
     offset = 8
@@ -499,10 +537,12 @@ def decode_related_object_id_index(
     decoded_annotations_data = []
     # First pass: decode positions and properties
     for _ in range(count):
-        positions_values, properties_values, offset = decode_positions_and_properties(
-            data=data,
-            info=info,
-            offset=offset,
+        positions_values, properties_values, offset = (
+            decode_positions_and_properties_via_single_annotation(
+                data=data,
+                info=info,
+                offset=offset,
+            )
         )
         decoded_annotations_data.append((positions_values, properties_values))
 
@@ -549,11 +589,13 @@ def write_annotation_id_index(
     index_dir.mkdir(parents=True, exist_ok=True)
 
     for annotation_id, (positions, properties, relationships) in annotations.items():
-        encoded_data = encode_annotation_id_index(
-            info=info,
-            positions_values=positions,
-            properties_values=properties,
-            relationships_values=relationships,
+        encoded_data = (
+            encode_positions_and_properties_and_relationships_via_single_annotation(
+                info=info,
+                positions_values=positions,
+                properties_values=properties,
+                relationships_values=relationships,
+            )
         )
         with open(index_dir / str(annotation_id), "wb") as f:
             f.write(encoded_data)
@@ -607,7 +649,11 @@ def read_annotation_id_index(
             with open(fpath, "rb") as f:
                 encoded_data = f.read()
 
-            decoded_data = decode_annotation_id_index(data=encoded_data, info=info)
+            decoded_data = (
+                decode_positions_and_properties_and_relationships_via_single_annotation(
+                    data=encoded_data, info=info
+                )
+            )
             annotations[annotation_id] = decoded_data
     return annotations
 
@@ -653,7 +699,7 @@ def write_related_object_id_index(
                 object_id,
                 annotations,
             ) in annotations_by_object_id[rel.id].items():
-                encoded_data = encode_related_object_id_index(
+                encoded_data = encode_positions_and_properties_via_multiple_annotation(
                     info=info,
                     annotations=annotations,
                 )
@@ -711,7 +757,7 @@ def read_related_object_id_index(
                 with open(fpath, "rb") as f:
                     encoded_data = f.read()
 
-                decoded_data = decode_related_object_id_index(
+                decoded_data = decode_positions_and_properties_via_multiple_annotation(
                     data=encoded_data, info=info
                 )
                 relationship_data[object_id] = decoded_data
@@ -799,8 +845,31 @@ class GridLevel:
         return tuple(next_grid_shape)
 
 
+def get_coordinates_and_kd_tree(
+    points: pd.DataFrame | DaskDataFrame,
+) -> ValidNumericNDArray:
+    """
+    Extract xyz coordinates and create a KDTree.
+    """
+    # TODO: we can generalize to 2D points. 1D points do not make much sense. If we
+    #  only hjave 1D or 2D point the following line will throw an error.
+    if isinstance(points, DaskDataFrame):
+        xyz = points[["x", "y", "z"]].compute().values
+    else:
+        xyz = points[["x", "y", "z"]].values
+    if xyz.dtype not in SUPPORTED_DTYPES:
+        # TODO: make a test for this
+        raise TypeError(
+            f"Unsupported type for xyz coordinates: {type(xyz).__name__}; supported "
+            f"types are {ValidNumericNDArray.__args__}."
+        )
+    kd_tree = KDTree(xyz)
+    return xyz, kd_tree
+
+
 def compute_spatial_index(
-    points: DaskDataFrame | pd.DataFrame,
+    xyz: ValidNumericNDArray,
+    kd_tree: KDTree | None = None,
     limit: int = 1000,
     starting_grid_shape: tuple[int, ...] | None = None,
 ) -> dict[int, GridLevel]:
@@ -809,10 +878,8 @@ def compute_spatial_index(
     if starting_grid_shape is None:
         starting_grid_shape = (1, 1, 1)
 
-    # TODO: we can generalize to 2D points. 1D points do not make much sense. If we
-    #  only hjave 1D or 2D point the following line will throw an error.
-    xyz = points[["x", "y", "z"]].values
-    tree = KDTree(xyz)
+    if kd_tree is None:
+        kd_tree = KDTree(xyz)
 
     mins = np.min(xyz, axis=0)
     maxs = np.max(xyz, axis=0)
@@ -856,7 +923,7 @@ def compute_spatial_index(
             # find points in the grid cell
             # this filter points by a radius r, but we have different values per axis,
             # so we proceed with manual filtering on the result from the kDTree query
-            indices = tree.query_ball_point(
+            indices = kd_tree.query_ball_point(
                 centroid, r=grid_level.chunk_size.max().item() / 2 + eps, p=np.inf
             )
             filtered = xyz[indices]
@@ -964,3 +1031,127 @@ def compute_spatial_index(
             )
         len_previous_remaining_indices = len(remaining_indices)
     return grid
+
+
+# def encode_spatial_index(
+#     info: AnnotationInfo,
+#     annotations: list[tuple[int, list[float], dict[str, Any]]],
+# ) -> bytes:
+#     """
+#     """
+#     pass
+#     # buf = bytearray()
+#     # count = len(annotations)
+#     # buf += struct.pack("<Q", count)
+#     #
+#     # # Encode positions and properties for all annotations
+#     # for _, positions_values, properties_values in annotations:
+#     #     buf += encode_positions_and_properties(
+#     #         info=info,
+#     #         positions_values=positions_values,
+#     #         properties_values=properties_values,
+#     #     )
+#     #
+#     # # Encode annotation ids for all annotations
+#     # for ann_id, _, _ in annotations:
+#     #     buf += struct.pack("<Q", ann_id)
+#     #
+#     # return bytes(buf)
+#
+#
+# def decode_spatial_index(
+#     info: AnnotationInfo,
+#     data: bytes,
+# ) -> list[tuple[int, list[float], dict[str, Any]]]:
+#     """
+#     """
+#     pass
+#     # (count,) = struct.unpack_from("<Q", data)
+#     # offset = 8
+#     #
+#     # decoded_annotations_data = []
+#     # # First pass: decode positions and properties
+#     # for _ in range(count):
+#     #     positions_values, properties_values, offset = decode_positions_and_properties(
+#     #         data=data,
+#     #         info=info,
+#     #         offset=offset,
+#     #     )
+#     #     decoded_annotations_data.append((positions_values, properties_values))
+#     #
+#     # # Second pass: decode annotation ids
+#     # decoded_annotations = []
+#     # for i in range(count):
+#     #     (ann_id,) = struct.unpack_from("<Q", data, offset)
+#     #     offset += 8
+#     #     positions_values, properties_values = decoded_annotations_data[i]
+#     #     decoded_annotations.append((ann_id, positions_values, properties_values))
+#     #
+#     # return decoded_annotations
+
+
+def write_spatial_index(
+    info: AnnotationInfo,
+    grid: dict[int, GridLevel],
+    root_path: Path,
+    annotations: dict[int, list[tuple[int, list[float], dict[str, Any]]]],
+):
+    """ """
+    pass
+    # for rel in info.relationships:
+    #     if rel.sharding is not None:
+    #         raise NotImplementedError(
+    #             f"Sharded related object ID index writing for relationship '{rel.id}' is not implemented."
+    #         )
+    #
+    #     index_dir = root_path / rel.key
+    #     index_dir.mkdir(parents=True, exist_ok=True)
+    #
+    #     if rel.id in annotations_by_object_id:
+    #         for (
+    #             object_id,
+    #             annotations,
+    #         ) in annotations_by_object_id[rel.id].items():
+    #             encoded_data = encode_related_object_id_index(
+    #                 info=info,
+    #                 annotations=annotations,
+    #             )
+    #             with open(index_dir / str(object_id), "wb") as f:
+    #                 f.write(encoded_data)
+
+
+def read_spatial_index(
+    info: AnnotationInfo,
+    root_path: Path,
+) -> dict[str, dict[int, list[tuple[int, list[float], dict[str, Any]]]]]:
+    """ """
+    pass
+    # all_relationships_data = {}
+    # for rel in info.relationships:
+    #     if rel.sharding is not None:
+    #         raise NotImplementedError(
+    #             f"Sharded related object ID index reading for relationship '{rel.id}' is not implemented."
+    #         )
+    #
+    #     index_dir = root_path / rel.key
+    #     if not index_dir.is_dir():
+    #         raise FileNotFoundError(
+    #             f"Related object ID index directory '{index_dir}' does not exist."
+    #         )
+    #
+    #     relationship_data = {}
+    #     for fpath in index_dir.iterdir():
+    #         if fpath.is_file():
+    #             if re.match(r"^\d+$", fpath.name) is None:
+    #                 continue
+    #             object_id = int(fpath.name)
+    #
+    #             with open(fpath, "rb") as f:
+    #                 encoded_data = f.read()
+    #
+    #             decoded_data = decode_related_object_id_index(
+    #                 data=encoded_data, info=info
+    #             )
+    #             relationship_data[object_id] = decoded_data
+    #     all_relationships_data[rel.id] = relationship_data
+    # return all_relationships_data

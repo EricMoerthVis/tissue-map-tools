@@ -5,8 +5,8 @@ from pathlib import Path
 from pydantic import ValidationError
 from tissue_map_tools.data_model.annotations import (
     AnnotationInfo,
-    decode_annotation_id_index,
-    encode_annotation_id_index,
+    decode_positions_and_properties_and_relationships_via_single_annotation,
+    encode_positions_and_properties_and_relationships_via_single_annotation,
     write_annotation_id_index,
     read_annotation_id_index,
     write_related_object_id_index,
@@ -334,14 +334,16 @@ def test_roundtrip_point():
     properties_values = {"color": [255, 128, 0], "confidence": 0.95, "cell_type": 1}
     relationships_values = {"segment": [1001, 1002]}
 
-    encoded = encode_annotation_id_index(
+    encoded = encode_positions_and_properties_and_relationships_via_single_annotation(
         info=info,
         positions_values=positions_values,
         properties_values=properties_values,
         relationships_values=relationships_values,
     )
-    decoded_pos, decoded_props, decoded_rels = decode_annotation_id_index(
-        info=info, data=encoded
+    decoded_pos, decoded_props, decoded_rels = (
+        decode_positions_and_properties_and_relationships_via_single_annotation(
+            info=info, data=encoded
+        )
     )
 
     assert np.allclose(positions_values, decoded_pos)
@@ -361,14 +363,16 @@ def test_roundtrip_line_missing_relationship():
     properties_values = {"color": [255, 128, 0], "confidence": 0.95, "cell_type": 2}
     relationships_values = {}  # Missing 'segment' relationship
 
-    encoded = encode_annotation_id_index(
+    encoded = encode_positions_and_properties_and_relationships_via_single_annotation(
         info=info,
         positions_values=positions_values,
         properties_values=properties_values,
         relationships_values=relationships_values,
     )
-    decoded_pos, decoded_props, decoded_rels = decode_annotation_id_index(
-        info=info, data=encoded
+    decoded_pos, decoded_props, decoded_rels = (
+        decode_positions_and_properties_and_relationships_via_single_annotation(
+            info=info, data=encoded
+        )
     )
 
     assert np.allclose(positions_values, decoded_pos)
@@ -385,21 +389,27 @@ def test_roundtrip_decode_encode():
     properties_values = {"color": [10, 20, 30], "confidence": 0.5, "cell_type": 0}
     relationships_values = {"segment": [2001]}
 
-    original_encoded = encode_annotation_id_index(
-        info=info,
-        positions_values=positions_values,
-        properties_values=properties_values,
-        relationships_values=relationships_values,
+    original_encoded = (
+        encode_positions_and_properties_and_relationships_via_single_annotation(
+            info=info,
+            positions_values=positions_values,
+            properties_values=properties_values,
+            relationships_values=relationships_values,
+        )
     )
 
-    decoded_pos, decoded_props, decoded_rels = decode_annotation_id_index(
-        info=info, data=original_encoded
+    decoded_pos, decoded_props, decoded_rels = (
+        decode_positions_and_properties_and_relationships_via_single_annotation(
+            info=info, data=original_encoded
+        )
     )
-    re_encoded = encode_annotation_id_index(
-        info=info,
-        positions_values=decoded_pos,
-        properties_values=decoded_props,
-        relationships_values=decoded_rels,
+    re_encoded = (
+        encode_positions_and_properties_and_relationships_via_single_annotation(
+            info=info,
+            positions_values=decoded_pos,
+            properties_values=decoded_props,
+            relationships_values=decoded_rels,
+        )
     )
 
     assert original_encoded == re_encoded
