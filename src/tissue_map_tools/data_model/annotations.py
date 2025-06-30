@@ -15,7 +15,6 @@ import re
 import struct
 from pathlib import Path
 from scipy.spatial import KDTree
-import matplotlib.pyplot as plt
 import numpy as np
 from dask.dataframe import DataFrame as DaskDataFrame
 import pandas as pd
@@ -25,7 +24,8 @@ from numpy.typing import NDArray
 
 RNG = default_rng(42)
 
-PRINT_DEBUG = False
+PRINT_DEBUG = True
+VISUAL_DEBUG = False
 
 
 class AnnotationProperty(BaseModel):
@@ -37,16 +37,13 @@ class AnnotationProperty(BaseModel):
     enum_values: list[Any] | None = None
     enum_labels: list[str] | None = None
 
-    model_config = ConfigDict(validate_by_name=True, extra="allow")
-
     @field_validator("id")
     @classmethod
     def _validate_id(cls, v):
-        import re
-
-        if not re.match(r"^[a-z][a-zA-Z0-9_]*$", v):
+        regexp = r"^[a-z][a-zA-Z0-9_]*$"
+        if not re.match(regexp, v):
             raise ValueError(
-                "Property 'id' must match the regular expression ^[a-z][a-zA-Z0-9_]*$."
+                f"Property 'id' must match the regular expression {regexp}."
             )
         return v
 
@@ -114,10 +111,7 @@ class AnnotationById(BaseModel):
     key: str
     sharding: ShardingSpecification | None = None
 
-    @field_validator("key")
-    @classmethod
-    def _validate_key(cls, v):
-        return validate_key_path(v)
+    _validate_key = field_validator("key")(validate_key_path)
 
 
 class AnnotationSpatialLevel(BaseModel):
@@ -128,10 +122,7 @@ class AnnotationSpatialLevel(BaseModel):
     chunk_size: conlist(confloat(gt=0), min_length=1)  # type: ignore[valid-type]
     limit: conint(gt=0)  # type: ignore[valid-type]
 
-    @field_validator("key")
-    @classmethod
-    def _validate_key(cls, v):
-        return validate_key_path(v)
+    _validate_key = field_validator("key")(validate_key_path)
 
 
 class AnnotationInfo(BaseModel):
@@ -148,7 +139,7 @@ class AnnotationInfo(BaseModel):
     by_id: AnnotationById
     spatial: list[AnnotationSpatialLevel]
 
-    model_config = ConfigDict(validate_by_name=True, extra="allow")
+    model_config = ConfigDict(validate_by_name=True)
 
     @property
     def rank(self) -> int:
@@ -224,6 +215,20 @@ def encode_positions_and_properties(
 ) -> bytes:
     """
     Encode positions and properties of a single annotation to binary format.
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    positions_values
+        The position values to encode.
+    properties_values
+        The property values to encode.
+
+    Returns
+    -------
+    bytes
+        The encoded binary data representing the annotation.
     """
     rank = info.rank
     buf = bytearray()
@@ -261,13 +266,30 @@ def encode_positions_and_properties(
 
 
 def decode_positions_and_properties(
-    data: bytes,
     info: AnnotationInfo,
+    data: bytes,
     offset: int = 0,
 ) -> tuple[list[float], dict[str, Any], int]:
     """
     Decode positions and properties of a single annotation from binary format.
-    Returns (positions_values, properties_values, offset)
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    data
+        The binary data to decode.
+    offset
+        The starting offset in the data buffer (default is 0).
+
+    Returns
+    -------
+    positions_values
+        The decoded position values.
+    properties_values
+        The decoded property values.
+    offset
+        The offset after reading the annotation.
     """
     rank = info.rank
     # 1. Decode geometry
@@ -329,10 +351,22 @@ def encode_annotation_id_index(
     """
     Encode a single annotation of the annotation ID index to binary format.
 
-    Notes
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    positions_values
+        The position values to encode.
+    properties_values
+        The property values to encode.
+    relationships_values
+        The relationship values to encode.
+
+    Returns
     -------
-    This encoding makes use of the "single annotation encoding" approach, i.e. it
-    encodes a single annotation with its positions, properties, and relationships.
+    bytes
+        The encoded binary data representing the annotation, including positions,
+        properties, and relationships.
     """
     buf = bytearray(
         encode_positions_and_properties(
@@ -353,9 +387,28 @@ def encode_annotation_id_index(
 
 
 def decode_annotation_id_index(
-    data: bytes,
     info: AnnotationInfo,
+    data: bytes,
 ) -> tuple[list[float], dict[str, Any], dict[str, list[int]]]:
+    """
+    Decode a single annotation of the annotation ID index from binary format.
+
+    Parameters
+    ----------
+    info
+       The annotation schema information.
+    data
+       The binary data to decode.
+
+    Returns
+    -------
+    positions_values
+        The decoded position values.
+    properties_values
+        The decoded property values.
+    relationships_values
+        The decoded relationship values.
+    """
     positions_values, properties_values, offset = decode_positions_and_properties(
         data=data, info=info
     )
@@ -381,7 +434,26 @@ def encode_related_object_id_index(
 ) -> bytes:
     """
     Encode a list of annotations for the related object ID index.
-    This should only encode positions and properties, not relationships.
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    annotations
+        A list of tuples, each containing the annotation ID, position values,
+        and property values.
+
+    Returns
+    -------
+    bytes
+        The encoded binary data representing all annotations for a related object,
+        including positions, properties, and annotation IDs.
+
+    Notes
+    -----
+    This encoding makes use of the "multiple annotation encoding"; each individual
+    encoding follows the "single annotation encoding" approach, but only encodes
+    positions and properties, not relationships.
     """
     buf = bytearray()
     count = len(annotations)
@@ -403,12 +475,23 @@ def encode_related_object_id_index(
 
 
 def decode_related_object_id_index(
-    data: bytes,
     info: AnnotationInfo,
+    data: bytes,
 ) -> list[tuple[int, list[float], dict[str, Any]]]:
     """
     Decode a list of annotations for the related object ID index.
-    This should only decode positions and properties, not relationships.
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    data
+        The binary data to decode.
+
+    Returns
+    -------
+    A list of tuples, each containing the annotation ID, position values, and
+    property values. Relationships are not decoded in this function.
     """
     (count,) = struct.unpack_from("<Q", data)
     offset = 8
@@ -435,12 +518,27 @@ def decode_related_object_id_index(
 
 
 def write_annotation_id_index(
+    info: AnnotationInfo,
     root_path: Path,
     annotations: dict[int, tuple[list[float], dict[str, Any], dict[str, list[int]]]],
-    info: AnnotationInfo,
 ):
     """
     Write the annotation ID index to disk (unsharded format).
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    root_path
+        The root directory where the annotation index will be written.
+    annotations
+        A dictionary mapping annotation IDs to tuples containing position values,
+        property values, and relationship values.
+
+    Raises
+    ------
+    NotImplementedError
+        If sharding is specified in the annotation info.
     """
     if info.by_id.sharding is not None:
         raise NotImplementedError(
@@ -462,11 +560,30 @@ def write_annotation_id_index(
 
 
 def read_annotation_id_index(
-    root_path: Path,
     info: AnnotationInfo,
+    root_path: Path,
 ) -> dict[int, tuple[list[float], dict[str, Any], dict[str, list[int]]]]:
     """
     Read the annotation ID index from disk (unsharded format).
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    root_path
+        The root directory where the annotation index is stored.
+
+    Returns
+    -------
+    A dictionary mapping annotation IDs to tuples containing position values,
+    property values, and relationship values.
+
+    Raises
+    ------
+    NotImplementedError
+        If sharding is specified in the annotation info.
+    FileNotFoundError
+        If the annotation ID index directory does not exist.
     """
     if info.by_id.sharding is not None:
         raise NotImplementedError(
@@ -496,8 +613,8 @@ def read_annotation_id_index(
 
 
 def write_related_object_id_index(
-    root_path: Path,
     info: AnnotationInfo,
+    root_path: Path,
     annotations_by_object_id: dict[
         str,
         dict[int, list[tuple[int, list[float], dict[str, Any]]]],
@@ -505,7 +622,22 @@ def write_related_object_id_index(
 ):
     """
     Write the related object ID index to disk (unsharded format).
-    `annotations_by_object_id` is a dict mapping relationship id to a dict mapping object id to a list of annotations.
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    root_path
+        The root directory where the related object ID index will be written.
+    annotations_by_object_id
+        A dictionary mapping relationship id to a dictionary mapping object id to a list
+        of annotations. Each annotation is a tuple of (annotation id, position values,
+        property values).
+
+    Raises
+    ------
+    NotImplementedError
+        If sharding is specified for any relationship in the annotation info.
     """
     for rel in info.relationships:
         if rel.sharding is not None:
@@ -530,11 +662,31 @@ def write_related_object_id_index(
 
 
 def read_related_object_id_index(
-    root_path: Path,
     info: AnnotationInfo,
+    root_path: Path,
 ) -> dict[str, dict[int, list[tuple[int, list[float], dict[str, Any]]]]]:
     """
     Read the related object ID index from disk (unsharded format).
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    root_path
+        The root directory where the related object ID index is stored.
+
+    Returns
+    -------
+    A dictionary mapping relationship id to a dictionary mapping object id to a list
+    of annotations. Each annotation is a tuple of (annotation id, position values,
+    property values).
+
+    Raises
+    ------
+    NotImplementedError
+        If sharding is specified for any relationship in the annotation info.
+    FileNotFoundError
+        If the related object ID index directory does not exist.
     """
     all_relationships_data = {}
     for rel in info.relationships:
@@ -568,65 +720,57 @@ def read_related_object_id_index(
 
 
 class GridLevel:
-    level: int
-    grid_shape: list[int]
-    chunk_size: NDArray[np.float64]
-    limit: int
-
     def __init__(
         self,
         level: int,
-        grid_shape: list[int],
+        grid_shape: tuple[int, ...],
         mins: NDArray[np.float64],
         maxs: NDArray[np.float64],
         limit: int,
-        parent_cells: list[tuple[int, int, int]],
-        parent_grid_shape: list[int],
+        parent_cells: list[tuple[int, ...]],
+        parent_grid_shape: tuple[int, ...],
     ) -> None:
-        self.level = level
-        self.grid_shape = grid_shape
-        self.mins = mins
-        self.maxs = maxs
-        self.limit = limit
+        self.level: int = level
+        self.grid_shape: tuple[int, ...] = grid_shape
+        self.mins: NDArray[np.float64] = mins
+        self.maxs: NDArray[np.float64] = maxs
+        self.limit: int = limit
 
-        # derived quantities
-        self.sizes = np.array(maxs) - np.array(mins)
-        self.chunk_size = self.sizes / np.array(self.grid_shape)
-        self.cells: list[tuple[int, int, int]] = []
+        # quantities derived in this function call
+        self.sizes: NDArray[np.float64] = np.array(maxs) - np.array(mins)
+        self.chunk_size: NDArray[np.float64] = self.sizes / np.array(self.grid_shape)
+        self.cells: list[tuple[int, ...]] = []
 
         # quantities set later
-        self.populated_cells: dict[tuple[int, int, int], NDArray[np.float64]] = {}
+        self.populated_cells: dict[tuple[int, ...], NDArray[np.float64]] = {}
+
+        if len(self.mins) != 3 or len(self.maxs) != 3:
+            raise NotImplementedError("GridLevel only supports 3D grids at the moment.")
 
         for parent_cell in parent_cells:
-            new_cells_by_dim: dict[int, list[int]] = {}
+            new_cells_by_dim: dict[int, tuple[int, ...]] = {}
             for dim in range(3):
                 index = parent_cell[dim]
                 factor = grid_shape[dim] // parent_grid_shape[dim]
                 if factor == 1:
-                    new_cells_by_dim[dim] = [index]
+                    new_cells_by_dim[dim] = (index,)
                 else:
-                    new_cells_by_dim[dim] = [index * factor, index * factor + 1]
+                    new_cells_by_dim[dim] = (index * factor, index * factor + 1)
             new_cells = cast(
-                list[tuple[int, int, int]],
+                list[tuple[int, ...]],
                 itertools.product(*new_cells_by_dim.values()),
             )
             self.cells.extend(new_cells)
-
-    def iter_full_grid(self):
-        for i in range(self.grid_shape[0]):
-            for j in range(self.grid_shape[1]):
-                for k in range(self.grid_shape[2]):
-                    yield (i, j, k)
 
     def iter_cells(self):
         for i, j, k in self.cells:
             yield (i, j, k)
 
-    def centroid(self, index: tuple[int, int, int]) -> NDArray[np.float64]:
+    def centroid(self, cell: tuple[int, ...]) -> NDArray[np.float64]:
         """Calculate the centroid of the grid cell."""
-        return np.array(index) * self.chunk_size + self.chunk_size / 2 + self.mins
+        return np.array(cell) * self.chunk_size + self.chunk_size / 2 + self.mins
 
-    def get_next_grid_shape(self) -> list[int]:
+    def get_next_grid_shape(self) -> tuple[int, ...]:
         """Get the shape of the next grid level so that we get isotropic chunks.
 
         Notes
@@ -636,11 +780,11 @@ class GridLevel:
         prior level chunk_size, whichever results in a more spatially isotropic
         chunk."
 
-        We implement this as follows: if a chunk lenght for a given axis is half
+        We implement this as follows: if a chunk length for a given axis is half
         (or less) than the size of any other chunk, then we leave this axis as is,
-        otherwise we divide the chunk size by 2.
+        otherwise we divide the chunk size by 2 (i.e. we multiply the grid shape by 2).
         """
-        next_grid_shape = self.grid_shape.copy()
+        next_grid_shape = list(self.grid_shape)
         for i in range(3):
             if any(
                 [
@@ -652,20 +796,21 @@ class GridLevel:
                 continue
             else:
                 next_grid_shape[i] *= 2
-        return next_grid_shape
+        return tuple(next_grid_shape)
 
 
 def compute_spatial_index(
     points: DaskDataFrame | pd.DataFrame,
     limit: int = 1000,
-    starting_grid_shape: list[int] | None = None,
+    starting_grid_shape: tuple[int, ...] | None = None,
 ) -> dict[int, GridLevel]:
     # TODO: only points are supported at the moment, not lines, axis-aligned bounding
     #  boxes and ellipsoids
     if starting_grid_shape is None:
-        starting_grid_shape = [1, 1, 1]
+        starting_grid_shape = (1, 1, 1)
 
-    # TODO: we can generalize to 2D points. 1D points do not make much sense
+    # TODO: we can generalize to 2D points. 1D points do not make much sense. If we
+    #  only hjave 1D or 2D point the following line will throw an error.
     xyz = points[["x", "y", "z"]].values
     tree = KDTree(xyz)
 
@@ -674,6 +819,10 @@ def compute_spatial_index(
 
     remaining_indices = set(range(len(xyz)))
 
+    # the default case is that starting_grid_shape is (1, 1, 1), which means that
+    # parent_cells is [(0, 0, 0)].
+    parent_cells = list(itertools.product(*[range(s) for s in starting_grid_shape]))
+
     grid: dict[int, GridLevel] = {}
     grid_level = GridLevel(
         level=0,
@@ -681,31 +830,32 @@ def compute_spatial_index(
         mins=mins,
         maxs=maxs,
         limit=limit,
-        parent_cells=[(0, 0, 0)],
+        parent_cells=parent_cells,
         parent_grid_shape=starting_grid_shape,
     )
     # to avoid the risk of points in the boundary of the grid not being included
     eps = 1e-6
-    previous_remaining_indices = len(remaining_indices)
+    len_previous_remaining_indices = len(remaining_indices)
 
     while len(remaining_indices) > 0:
         # initialization
         grid[grid_level.level] = grid_level
-        if PRINT_DEBUG or True:
+        if PRINT_DEBUG:
             print(
                 f"Processing grid level {grid_level.level} with shape {grid_level.grid_shape} "
                 f"and chunk size {grid_level.chunk_size}. Remaining points: {len(remaining_indices)}"
             )
 
         # main logic
-        if PRINT_DEBUG:
-            print("Active cells: ", grid_level.cells)
+        # if PRINT_DEBUG:
+        #     print("Active cells: ", grid_level.cells)
         for i, j, k in grid_level.iter_cells():
             # calculate the centroid of the grid cell
             centroid = grid_level.centroid((i, j, k))
 
             # find points in the grid cell
-            # this filter points by a radius r, but we have different values per axis
+            # this filter points by a radius r, but we have different values per axis,
+            # so we proceed with manual filtering on the result from the kDTree query
             indices = tree.query_ball_point(
                 centroid, r=grid_level.chunk_size.max().item() / 2 + eps, p=np.inf
             )
@@ -720,10 +870,11 @@ def compute_spatial_index(
             )
             discarded = np.sum(~mask).item()
             if discarded > 0:
-                # TODO: possible bug! This message is not printed while I would
-                #  expect that the kDTree query would return more points than the mask
-                #  would allow (this should happend when chunk_size has different
-                #  dimensions
+                # TODO: **possible bug!** This message is not printed while I would
+                #  expect that the kDTree query would sometimes return more points than
+                #  the mask would allow (this should happend when chunk_size has
+                #  different dimensions)
+                # let's keep this print active until we address the comment above
                 if PRINT_DEBUG or True:
                     print(
                         f"-----------------> {discarded} points where filtered out of"
@@ -731,12 +882,14 @@ def compute_spatial_index(
                     )
             indices = np.array(indices)[mask].tolist()
 
-            # filter out points that are not in the grid cell
+            # filter out points that are not in the grid cell because they have been
+            # previously emitted
             indices = [i for i in indices if i in remaining_indices]
 
             if len(indices) > 0:
                 if len(indices) <= limit:
                     emitted = indices
+                    RNG.shuffle(emitted)
                 else:
                     emitted = RNG.choice(indices, size=limit, replace=False)
                 if PRINT_DEBUG:
@@ -746,18 +899,9 @@ def compute_spatial_index(
                 grid_level.populated_cells[(i, j, k)] = xyz[emitted]
                 remaining_indices.difference_update(emitted)
 
-                # create a new layer for this grid cell
-                # layer_name = f"level_{grid_level.level}_cell_{i}_{j}_{k}"
-
-                # here we would save the points to the precomputed format
-                # e.g., save_points_to_precomputed(points[indices], precomputed_path, layer_name)
-
-        # np.take(xyz, indices, axis=0)
-        remaining_xyz = xyz[list(remaining_indices)]
-
-        # visual debug
-        VISUAL_DEBUG = False
         if VISUAL_DEBUG:
+            import matplotlib.pyplot as plt
+
             plt.figure(figsize=(10, 10))
             chunk_size = grid_level.chunk_size
             lines_x = np.arange(
@@ -785,6 +929,7 @@ def compute_spatial_index(
                     linewidth=0.5,
                 )
 
+            remaining_xyz = xyz[list(remaining_indices)]
             plt.scatter(
                 remaining_xyz[:, 0],
                 remaining_xyz[:, 1],
@@ -811,12 +956,11 @@ def compute_spatial_index(
         )
 
         # sanity check
-        if len(remaining_indices) == previous_remaining_indices:
+        if len(remaining_indices) == len_previous_remaining_indices:
             raise ValueError(
                 "No points were emitted in this grid level. This is likely due to the "
-                "grid size being too small."
+                "grid size being too small. To fix, try increasing the `limit` "
+                "parameter."
             )
-        previous_remaining_indices = len(remaining_indices)
-
-    print("spatial index computed, now saving to precomputed format")
+        len_previous_remaining_indices = len(remaining_indices)
     return grid

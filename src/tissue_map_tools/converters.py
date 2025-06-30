@@ -220,7 +220,7 @@ def from_spatialdata_points_to_precomputed_points(
     points: DaskDataFrame | pd.DataFrame,
     precomputed_path: str | Path,
     limit: int = 1000,
-    starting_grid_shape: list[int] | None = None,
+    starting_grid_shape: tuple[int, ...] | None = None,
 ) -> None:
     """
 

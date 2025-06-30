@@ -437,7 +437,7 @@ def test_write_read_annotation_id_index():
         assert (index_dir / "2").is_file()
 
         # Test reading
-        read_annotations = read_annotation_id_index(root_path, info)
+        read_annotations = read_annotation_id_index(info=info, root_path=root_path)
 
         # Test consistency
         assert len(annotations) == len(read_annotations)
@@ -502,7 +502,7 @@ def test_write_read_related_object_id_index():
         assert (index_dir / "101").is_file()
         assert (index_dir / "102").is_file()
 
-        read_data = read_related_object_id_index(root_path, info)
+        read_data = read_related_object_id_index(info=info, root_path=root_path)
 
         assert annotations_by_object_id.keys() == read_data.keys()
         for rel_id, original_rel_data in annotations_by_object_id.items():
