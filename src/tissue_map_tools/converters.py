@@ -2,11 +2,27 @@ import dask.array
 import numpy as np
 from pathlib import Path
 
+from typing import Any
 from cloudvolume.dask import to_cloudvolume
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
 from xarray import DataArray, DataTree
 from dask.dataframe import DataFrame as DaskDataFrame
+from numpy.random import default_rng
+import pandas as pd
+
+
+from tissue_map_tools.data_model.annotations import (
+    AnnotationInfo,
+    AnnotationProperty,
+    AnnotationRelationship,
+    compute_spatial_index,
+    write_annotation_id_index,
+    write_related_object_id_index,
+    get_coordinates_and_kd_tree,
+)
+
+RNG = default_rng(42)
 
 # behavior around this should be improved and made consistent across all the functions
 # that convert to precomputed format
@@ -206,20 +222,249 @@ def from_spatialdata_raster_to_precomputed_raster(
 
 
 def from_spatialdata_points_to_precomputed_points(
-    points: DaskDataFrame,
+    points: DaskDataFrame | pd.DataFrame,
     precomputed_path: str | Path,
+    limit: int = 1000,
+    starting_grid_shape: tuple[int, ...] | None = None,
 ) -> None:
-    pass
+    """
+
+    Parameters
+    ----------
+    points
+    precomputed_path
+
+    Returns
+    -------
+
+    Notes
+    -----
+    Only unshared points supported at the moment.
+    """
+
+    if isinstance(points, DaskDataFrame):
+        points = points.compute()
+
+    def get_annotation_property(df: pd.DataFrame, column: str) -> AnnotationProperty:
+        dtype = df[column].dtype
+        enum_values = None
+        enum_labels = None
+        if dtype == "category":
+            enum_labels = df[column].cat.categories.tolist()
+            enum_values = list(range(len(enum_labels)))
+            type_ = df[column].cat.codes.dtype.name
+        elif np.issubdtype(dtype, np.integer) or np.issubdtype(dtype, np.floating):
+            type_ = dtype.name
+        else:
+            raise ValueError(
+                f"Unsupported dtype {dtype} for column {column}. "
+                f"Supported dtypes are: {SUPPORTED_DTYPES}"
+            )
+        return AnnotationProperty(
+            id=column,
+            type=type_,
+            description="",
+            enum_values=enum_values,
+            enum_labels=enum_labels,
+        )
+
+    # # this is a semi-hardcoded example of a relationship; we could generalize
+    # def get_relationships_by_categorical_values(
+    #     df: pd.DataFrame, column: str
+    # ) -> list[AnnotationRelationship]:
+    #     if df[column].dtype != "category":
+    #         raise ValueError(
+    #             f"Column {column} is not of type 'category'. "
+    #             "Relationships can only be created from categorical columns."
+    #         )
+    #     col = df[column]
+    #     relationships = []
+    #     for value in col.cat.categories:
+    #         relationship = AnnotationRelationship(
+    #             id=f"{column}_{value}",
+    #             key=f"{column}_{value}",
+    #         )
+    #         relationships.append(relationship)
+    #     return relationships
+
+    xyz, kd_tree = get_coordinates_and_kd_tree(points)
+    # this just a hardcoded example of relationship: we hardcode 3 random points and
+    # we relate all the objects that are within a certain distance to those points
+    ##
+    clusters = ["a", "b", "c"]
+    cluster_centers = {
+        "a": [0.0, 0.0, 0.0],
+        "b": [1.0, 1.0, 1.0],
+        "c": [0.3, 0.3, 0.3],
+    }
+    cluster_radii = {
+        "a": 0.1,
+        "b": 0.2,
+        "c": 0.3,
+    }
+    MAX_NEIGHBORS = 1000
+    cluster_neighbors: dict[str, list[int]] = {}
+    for cluster_id in clusters:
+        cluster_center = cluster_centers[cluster_id]
+        cluster_radius = cluster_radii[cluster_id]
+        neighbors = kd_tree.query_ball_point(
+            cluster_center,
+            r=cluster_radius,
+        )
+        cluster_neighbors[cluster_id] = neighbors[:MAX_NEIGHBORS]
+    id_to_cluster: dict[int, str] = {}
+    for cluster_id, neighbors in cluster_neighbors.items():
+        for neighbor in neighbors:
+            id_to_cluster[neighbor] = cluster_id
+    ##
+
+    spatial_columns = ["x", "y", "z"]
+    properties: list[AnnotationProperty] = [
+        get_annotation_property(df=points, column=col)
+        for col in points.columns
+        if col not in spatial_columns
+    ]
+    # hardcoded example
+    relationships = [
+        AnnotationRelationship(id=f"neighbors_{cluster}", key=f"neighbors_{cluster}")
+        for cluster in clusters
+    ]
+
+    ##
+    # compute annotations_by_index_id, used in write_annotation_id_index()
+    annotations_by_index_id: dict[
+        int, tuple[list[float], dict[str, Any], dict[str, list[int]]]
+    ] = {}
+    # convert all categorical columns to codes and store them in a separate dataframe
+    points_categorical = points.select_dtypes(include=["category"])
+    for col in points_categorical.columns:
+        points_categorical[col] = points[col].cat.codes
+
+    for i, row in points.iterrows():
+        coords = row[["x", "y", "z"]].values.tolist()
+        properties_values = {}
+        for k, v in row.items():
+            if points[k].dtype == "category":
+                v = points_categorical.loc[i, k]
+            properties_values[k] = v
+        if i not in id_to_cluster:
+            relationships_values = {}
+        else:
+            cluster = id_to_cluster[i]
+            relationships_values = {f"neighbors_{cluster}": cluster_neighbors[cluster]}
+        annotations_by_index_id[i] = (coords, properties_values, relationships_values)
+
+    ##
+    # compute annotations_by_relationship_id, used in write_related_object_id_index()
+    annotations_by_object_id: dict[
+        str,
+        dict[int, list[tuple[int, list[float], dict[str, Any]]]],
+    ] = {}
+    for cluster in clusters:
+        relationship_name = f"neighbors_{cluster}"
+        annotations_by_object_id[relationship_name] = {}
+        for neighbor_i in cluster_neighbors[cluster]:
+            annotations_by_object_id[relationship_name][neighbor_i] = []
+            for neighbor_j in neighbors:
+                if neighbor_i == neighbor_j:
+                    continue
+                coords, properties_values, _ = annotations_by_index_id[neighbor_j]
+                annotations_by_object_id[relationship_name][neighbor_i].append(
+                    (neighbor_j, coords, properties_values)
+                )
+
+    ##
+    grid = compute_spatial_index(
+        xyz=xyz,
+        kd_tree=kd_tree,
+        limit=limit,
+        starting_grid_shape=starting_grid_shape,
+    )
+    ##
+    # TODO: ensure that the data is anisotropic by looking at the coordinate
+    #  transformation
+    # TODO: the dimensions belows need to be adjusted, here we are assuming the units
+    #  to be meters
+    spatial: list[dict[str, Any]] = []
+    kw = {
+        "@type": "neuroglancer_annotations_v1",
+        "dimensions": {"x": [1.0, "m"], "y": [1.0, "m"], "z": [1.0, "m"]},
+        "lower_bound": grid[0].mins,
+        "upper_bound": grid[0].maxs,
+        "annotation_type": "POINT",
+        "properties": properties,
+        "relationships": relationships,
+        "by_id": {"key": "by_id", "sharding": None},
+        "spatial": spatial,
+    }
+    for grid_level in grid.values():
+        spatial_item = {
+            "key": f"spatial{grid_level.level}",
+            "sharding": None,
+            "grid_shape": grid_level.grid_shape,
+            "chunk_size": grid_level.chunk_size.tolist(),
+            "limit": grid_level.limit,
+        }
+        spatial.append(spatial_item)
+    annotation_info = AnnotationInfo(**kw)
+    print(annotation_info.model_dump_json(indent=4))
+    precomputed_path = Path(precomputed_path)
+    if precomputed_path.exists():
+        raise FileExistsError(
+            f"Precomputed path {precomputed_path} already exists. "
+            "Please remove it or choose a different path."
+        )
+    precomputed_path.mkdir(exist_ok=True)
+    with open(precomputed_path / "info", "w") as outfile:
+        outfile.write(annotation_info.model_dump_json(indent=4))
+
+    write_annotation_id_index(
+        info=annotation_info,
+        root_path=precomputed_path,
+        annotations=annotations_by_index_id,
+    )
+    write_related_object_id_index(
+        info=annotation_info,
+        root_path=precomputed_path,
+        annotations_by_object_id=annotations_by_object_id,
+    )
+    ##
 
 
 if __name__ == "__main__":
-    from_ome_zarr_04_raster_to_precomputed_raster(
-        ome_zarr_path="../../out/20_1_gloms/0",
-        precomputed_path="../../out/20_1_gloms_precomputed",
-        # is_labels=False,
-    )
+    import shutil
+
     # from_ome_zarr_04_raster_to_precomputed_raster(
     #     ome_zarr_path="../../out/20_1_gloms/0",
     #     precomputed_path="../../out/20_1_gloms_precomputed",
     #     # is_labels=False,
     # )
+    #
+    # from_ome_zarr_04_raster_to_precomputed_raster(
+    #     ome_zarr_path="../../out/20_1_gloms/0",
+    #     precomputed_path="../../out/20_1_gloms_precomputed",
+    #     # is_labels=False,
+    # )
+    #
+    # N_POINTS = 100_000_000
+    N_POINTS = 10_000
+    # N_POINTS = 101
+    df = pd.DataFrame(
+        {
+            "x": RNG.random(N_POINTS, dtype=np.float32),
+            "y": RNG.random(N_POINTS, dtype=np.float32) * 1.5,
+            "z": RNG.random(N_POINTS, dtype=np.float32),
+            "intensity": RNG.integers(0, 255, N_POINTS, dtype=np.uint32),
+            "categorical": RNG.choice(["a", "b", "c"], N_POINTS),
+        }
+    )
+    df["categorical"] = df["categorical"].astype("category")
+
+    precomputed_path = Path("/Users/macbook/Desktop/test_precomputed_points")
+    if precomputed_path.exists():
+        shutil.rmtree(precomputed_path)
+    from_spatialdata_points_to_precomputed_points(
+        points=df,
+        precomputed_path=precomputed_path,
+        limit=1000,
+    )
