@@ -19,7 +19,9 @@ from tissue_map_tools.data_model.annotations import (
     compute_spatial_index,
     write_annotation_id_index,
     write_related_object_id_index,
+    write_spatial_index,
     get_coordinates_and_kd_tree,
+    SUPPORTED_DTYPES,
 )
 
 RNG = default_rng(42)
@@ -372,7 +374,6 @@ def from_spatialdata_points_to_precomputed_points(
                 annotations_by_object_id[relationship_name][neighbor_i].append(
                     (neighbor_j, coords, properties_values)
                 )
-
     ##
     grid = compute_spatial_index(
         xyz=xyz,
@@ -416,7 +417,11 @@ def from_spatialdata_points_to_precomputed_points(
         )
     precomputed_path.mkdir(exist_ok=True)
     with open(precomputed_path / "info", "w") as outfile:
-        outfile.write(annotation_info.model_dump_json(indent=4))
+        outfile.write(
+            annotation_info.model_dump_json(
+                indent=4, by_alias=True, exclude_unset=True, exclude_none=True
+            )
+        )
 
     write_annotation_id_index(
         info=annotation_info,
@@ -428,43 +433,89 @@ def from_spatialdata_points_to_precomputed_points(
         root_path=precomputed_path,
         annotations_by_object_id=annotations_by_object_id,
     )
+
+    ##
+    # for each spatial index, compute annotations_by_spatial_chunk, used in
+    # write_spatial_index()
+    # TODO: we should not use enumerate here because the i is already present in the
+    #  key of "AnnotationSpatialLevel"
+    for i, annotation_spatial_level in enumerate(annotation_info.spatial):
+        annotations_by_spatial_chunk: dict[
+            str, list[tuple[int, list[float], dict[str, Any]]]
+        ] = {}
+        spatial_key = annotation_spatial_level.key
+        grid_level = grid[i]
+        for cell, indices in grid_level.populated_cells.items():
+            cell_name = "_".join(map(str, cell))
+            annotations_by_spatial_chunk[cell_name] = []
+
+            for index in indices:
+                coords_index, properties_values, _ = annotations_by_index_id[index]
+                annotations_by_spatial_chunk[cell_name].append(
+                    (index, coords_index, properties_values)
+                )
+
+        write_spatial_index(
+            info=annotation_info,
+            root_path=precomputed_path,
+            spatial_key=spatial_key,
+            annotations_by_spatial_chunk=annotations_by_spatial_chunk,
+        )
     ##
 
 
 if __name__ == "__main__":
     import shutil
 
-    # from_ome_zarr_04_raster_to_precomputed_raster(
-    #     ome_zarr_path="../../out/20_1_gloms/0",
-    #     precomputed_path="../../out/20_1_gloms_precomputed",
-    #     # is_labels=False,
-    # )
-    #
-    # from_ome_zarr_04_raster_to_precomputed_raster(
-    #     ome_zarr_path="../../out/20_1_gloms/0",
-    #     precomputed_path="../../out/20_1_gloms_precomputed",
-    #     # is_labels=False,
-    # )
-    #
-    # N_POINTS = 100_000_000
-    N_POINTS = 10_000
-    # N_POINTS = 101
-    df = pd.DataFrame(
-        {
-            "x": RNG.random(N_POINTS, dtype=np.float32),
-            "y": RNG.random(N_POINTS, dtype=np.float32) * 1.5,
-            "z": RNG.random(N_POINTS, dtype=np.float32),
-            "intensity": RNG.integers(0, 255, N_POINTS, dtype=np.uint32),
-            "categorical": RNG.choice(["a", "b", "c"], N_POINTS),
-        }
-    )
-    df["categorical"] = df["categorical"].astype("category")
+    # CREATE = True
+    CREATE = False
+    # SHOW = True
+    SHOW = True
 
     precomputed_path = Path("/Users/macbook/Desktop/test_precomputed_points")
-    if precomputed_path.exists():
-        shutil.rmtree(precomputed_path)
-    from_spatialdata_points_to_precomputed_points(
-        points=df,
-        precomputed_path=precomputed_path,
-        limit=1000,
-    )
+    if CREATE:
+        # from_ome_zarr_04_raster_to_precomputed_raster(
+        #     ome_zarr_path="../../out/20_1_gloms/0",
+        #     precomputed_path="../../out/20_1_gloms_precomputed",
+        #     # is_labels=False,
+        # )
+        #
+        # from_ome_zarr_04_raster_to_precomputed_raster(
+        #     ome_zarr_path="../../out/20_1_gloms/0",
+        #     precomputed_path="../../out/20_1_gloms_precomputed",
+        #     # is_labels=False,
+        # )
+        #
+        # N_POINTS = 100_000_000
+        N_POINTS = 10_000
+        # N_POINTS = 101
+        df = pd.DataFrame(
+            {
+                "x": RNG.random(N_POINTS, dtype=np.float32),
+                "y": RNG.random(N_POINTS, dtype=np.float32) * 1.5,
+                "z": RNG.random(N_POINTS, dtype=np.float32),
+                "intensity": RNG.integers(0, 255, N_POINTS, dtype=np.uint32),
+                "categorical": RNG.choice(["a", "b", "c"], N_POINTS),
+            }
+        )
+        df["categorical"] = df["categorical"].astype("category")
+
+        if precomputed_path.exists():
+            shutil.rmtree(precomputed_path)
+        from_spatialdata_points_to_precomputed_points(
+            points=df,
+            precomputed_path=precomputed_path,
+            limit=1000,
+        )
+    if SHOW:
+        import neuroglancer
+        import webbrowser
+
+        viewer = neuroglancer.Viewer()
+
+        url = f"precomputed://http://localhost:8912"
+        with viewer.txn() as s:
+            s.layers["points"] = neuroglancer.AnnotationLayer(source=url)
+
+        webbrowser.open(url=viewer.get_viewer_url(), new=2)
+        pass

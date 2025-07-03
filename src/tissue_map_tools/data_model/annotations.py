@@ -958,12 +958,14 @@ def compute_spatial_index(
                     emitted = indices
                     RNG.shuffle(emitted)
                 else:
+                    # BIG BUG! see here:
+                    # https://github.com/google/neuroglancer/issues/227#issuecomment-916384909
                     emitted = RNG.choice(indices, size=limit, replace=False)
                 if PRINT_DEBUG:
                     print(
                         f"Emitting {len(emitted)} points for grid cell ({i}, {j}, {k})"
                     )
-                grid_level.populated_cells[(i, j, k)] = xyz[emitted]
+                grid_level.populated_cells[(i, j, k)] = emitted
                 remaining_indices.difference_update(emitted)
 
         if VISUAL_DEBUG:
@@ -1092,32 +1094,38 @@ def compute_spatial_index(
 
 def write_spatial_index(
     info: AnnotationInfo,
-    grid: dict[int, GridLevel],
     root_path: Path,
-    annotations: dict[int, list[tuple[int, list[float], dict[str, Any]]]],
+    spatial_key: str,
+    annotations_by_spatial_chunk: dict[
+        str, list[tuple[int, list[float], dict[str, Any]]]
+    ],
 ):
     """ """
-    pass
-    # for rel in info.relationships:
-    #     if rel.sharding is not None:
-    #         raise NotImplementedError(
-    #             f"Sharded related object ID index writing for relationship '{rel.id}' is not implemented."
-    #         )
-    #
-    #     index_dir = root_path / rel.key
-    #     index_dir.mkdir(parents=True, exist_ok=True)
-    #
-    #     if rel.id in annotations_by_object_id:
-    #         for (
-    #             object_id,
-    #             annotations,
-    #         ) in annotations_by_object_id[rel.id].items():
-    #             encoded_data = encode_related_object_id_index(
-    #                 info=info,
-    #                 annotations=annotations,
-    #             )
-    #             with open(index_dir / str(object_id), "wb") as f:
-    #                 f.write(encoded_data)
+    annotation_spatial_level: AnnotationSpatialLevel | None = None
+    for spatial in info.spatial:
+        if spatial.key == spatial_key:
+            annotation_spatial_level = spatial
+            break
+    if annotation_spatial_level is None:
+        raise ValueError(
+            f"Spatial level with key '{spatial_key}' not found in annotation info."
+        )
+    if annotation_spatial_level.sharding is not None:
+        raise NotImplementedError(
+            f"Sharded spatial index writing for relationship '{spatial_key}' is not "
+            f"implemented."
+        )
+
+    index_dir = root_path / annotation_spatial_level.key
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    for cell_name, annotations in annotations_by_spatial_chunk.items():
+        encoded_data = encode_positions_and_properties_via_multiple_annotation(
+            info=info,
+            annotations=annotations,
+        )
+        with open(index_dir / str(cell_name), "wb") as f:
+            f.write(encoded_data)
 
 
 def read_spatial_index(
