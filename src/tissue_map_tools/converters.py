@@ -10,6 +10,7 @@ from xarray import DataArray, DataTree
 from dask.dataframe import DataFrame as DaskDataFrame
 from numpy.random import default_rng
 import pandas as pd
+import json
 
 
 from tissue_map_tools.data_model.annotations import (
@@ -39,13 +40,16 @@ def from_ome_zarr_04_raster_to_precomputed_raster(
     """
     Convert OME-Zarr v0.4 to Precomputed format.
 
-    Args:
-        ome_zarr_path (str | Path): Path to the OME-Zarr directory.
-        precomputed_path (str | Path): Path to save the Precomputed data.
-        is_labels (bool, optional): If True, the data is treated as labels (i.e., the
-            precomputed format will not have the "c" axis, which is used for channels).
-            If False, the data is treated as an image. If None, the function will try to
-            infer it from the data.
+    Parameters
+    ----------
+    ome_zarr_path
+        Path to the OME-Zarr directory.
+    precomputed_path
+        Path to save the Precomputed data.
+    is_labels
+        If True, the data is treated as labels (i.e., the precomputed format will not have
+        the "c" axis, which is used for channels). If False, the data is treated as an image.
+        If None, the function will try to infer it from the data.
     """
     # read raster data
     ome_zarr_path = Path(ome_zarr_path)
@@ -226,6 +230,7 @@ def from_spatialdata_raster_to_precomputed_raster(
 def from_spatialdata_points_to_precomputed_points(
     points: DaskDataFrame | pd.DataFrame,
     precomputed_path: str | Path,
+    points_name: str | None = None,
     limit: int = 1000,
     starting_grid_shape: tuple[int, ...] | None = None,
 ) -> None:
@@ -333,6 +338,8 @@ def from_spatialdata_points_to_precomputed_points(
     ]
 
     ##
+    # important: neuroglancer doesn't know about the df.index, it just knows about
+    # the "iloc"; so in the variables using "index_id", we need to use the "iloc"
     # compute annotations_by_index_id, used in write_annotation_id_index()
     annotations_by_index_id: dict[
         int, tuple[list[float], dict[str, Any], dict[str, list[int]]]
@@ -342,12 +349,13 @@ def from_spatialdata_points_to_precomputed_points(
     for col in points_categorical.columns:
         points_categorical[col] = points[col].cat.codes
 
-    for i, row in points.iterrows():
+    for i, (_, row) in enumerate(points.iterrows()):
         coords = row[["x", "y", "z"]].values.tolist()
         properties_values = {}
         for k, v in row.items():
             if points[k].dtype == "category":
-                v = points_categorical.loc[i, k]
+                k_index = points_categorical.columns.get_loc(k)
+                v = points_categorical.iloc[i, k_index]
             properties_values[k] = v
         if i not in id_to_cluster:
             relationships_values = {}
@@ -389,7 +397,7 @@ def from_spatialdata_points_to_precomputed_points(
     spatial: list[dict[str, Any]] = []
     kw = {
         "@type": "neuroglancer_annotations_v1",
-        "dimensions": {"x": [1.0, "m"], "y": [1.0, "m"], "z": [1.0, "m"]},
+        "dimensions": {"x": [1.0, "um"], "y": [1.0, "um"], "z": [1.0, "um"]},
         "lower_bound": grid[0].mins,
         "upper_bound": grid[0].maxs,
         "annotation_type": "POINT",
@@ -409,28 +417,44 @@ def from_spatialdata_points_to_precomputed_points(
         spatial.append(spatial_item)
     annotation_info = AnnotationInfo(**kw)
     print(annotation_info.model_dump_json(indent=4))
+
     precomputed_path = Path(precomputed_path)
-    if precomputed_path.exists():
+    if points_name is None:
+        points_name = f"points_{limit}"
+    points_path = precomputed_path / points_name
+    if points_path.exists():
         raise FileExistsError(
-            f"Precomputed path {precomputed_path} already exists. "
+            f"Precomputed path {points_path} already exists. "
             "Please remove it or choose a different path."
         )
-    precomputed_path.mkdir(exist_ok=True)
-    with open(precomputed_path / "info", "w") as outfile:
+    points_path.mkdir(exist_ok=True)
+    with open(points_path / "info", "w") as outfile:
         outfile.write(
             annotation_info.model_dump_json(
                 indent=4, by_alias=True, exclude_unset=True, exclude_none=True
             )
         )
 
+    with open(precomputed_path / "info") as infile:
+        info = json.loads(infile.read())
+        info["annotations"] = points_name
+    with open(precomputed_path / "info", "w") as outfile:
+        outfile.write(json.dumps(info, indent=4))
+
     write_annotation_id_index(
         info=annotation_info,
-        root_path=precomputed_path,
+        root_path=points_path,
         annotations=annotations_by_index_id,
     )
+    # from tissue_map_tools.data_model.annotations import read_annotation_id_index
+    # debug = read_annotation_id_index(info=annotation_info, root_path=points_path)
+    #
+    # for k, v in debug.items():
+    #     assert debug[k][1]['gene'] == annotations_by_index_id[k][1]['gene'].item()
+
     write_related_object_id_index(
         info=annotation_info,
-        root_path=precomputed_path,
+        root_path=points_path,
         annotations_by_object_id=annotations_by_object_id,
     )
 
@@ -457,10 +481,15 @@ def from_spatialdata_points_to_precomputed_points(
 
         write_spatial_index(
             info=annotation_info,
-            root_path=precomputed_path,
+            root_path=points_path,
             spatial_key=spatial_key,
             annotations_by_spatial_chunk=annotations_by_spatial_chunk,
         )
+    from tissue_map_tools.data_model.annotations import read_spatial_index
+
+    debug = read_spatial_index(
+        info=annotation_info, root_path=points_path, spatial_key="spatial2"
+    )
     ##
 
 

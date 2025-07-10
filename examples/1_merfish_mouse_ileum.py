@@ -5,7 +5,9 @@ Constructs the meshes from the volumetric data and from the 2.5D shapes.
 import napari_spatialdata.constants.config
 import spatialdata as sd
 from pathlib import Path
+from numpy.random import default_rng
 
+RNG = default_rng(42)
 
 napari_spatialdata.constants.config.PROJECT_3D_POINTS_TO_2D = False
 napari_spatialdata.constants.config.PROJECT_2_5D_SHAPES_TO_2D = False
@@ -17,15 +19,16 @@ sdata = sd.read_zarr(f)
 # print(sd.get_extent(sdata["molecules"]))
 
 ##
-# # subset the data
-molecules_cropped = sd.bounding_box_query(
-    sdata["molecule_baysor"],
-    axes=("x", "y", "z"),
-    min_coordinate=[1500, 1500, -10],
-    max_coordinate=[3000, 3000, 200],
-    target_coordinate_system="global",
-)
-sdata["molecule_baysor"] = molecules_cropped
+# subset the data
+# molecules_cropped = sd.bounding_box_query(
+#     sdata["molecule_baysor"],
+#     axes=("x", "y", "z"),
+#     min_coordinate=[1500, 1500, -10],
+#     max_coordinate=[3000, 3000, 200],
+#     target_coordinate_system="global",
+# )
+# sdata["molecule_baysor"] = molecules_cropped
+##
 #
 # cells_baysor_cropped = sd.bounding_box_query(
 #     sdata["cells_baysor"],
@@ -120,6 +123,7 @@ def make_dtypes_compatible_with_precomputed_annotations(
                 f"the maximum of {max_categories}. "
                 "Skipping conversion to category and dropping the column."
             )
+            continue
         df[column] = df[column].astype("category")
 
     for column in df.select_dtypes(include=["bool"]).columns:
@@ -137,11 +141,39 @@ def make_dtypes_compatible_with_precomputed_annotations(
     old_column_order = [col for col in old_column_order if col in df.columns]
     return df[old_column_order]
 
+subset = RNG.choice(len(sdata['molecule_baysor']), 10000, replace=False)
 
+print(sdata["molecule_baysor"].columns)
+subset_df = sdata["molecule_baysor"].compute().iloc[subset]
+subset_df = subset_df[
+    [
+        # working
+        "x",
+        "y",
+        "z",
+        "gene",
+        # "area",
+        #
+        # "mol_id",
+        # "x_raw",
+        # "y_raw",
+        # "z_raw",
+        # "brightness",
+        # "total_magnitude",
+        # "compartment",
+        # "nuclei_probs",
+        # "assignment_confidence",
+        #
+        # "cell",
+        # # "is_noise",  # TODO: bool not working at the moment
+        # # "ncv_color",  # TODO: represent as RGB
+        # "layer",
+    ]
+]
 sdata["molecule_baysor"] = sd.models.PointsModel.parse(
     make_dtypes_compatible_with_precomputed_annotations(
-        sdata["molecule_baysor"].compute(),
-        max_categories=100,
+        subset_df,
+        max_categories=250,
         check_for_overflow=True,
     )
 )
@@ -149,6 +181,7 @@ sdata["molecule_baysor"] = sd.models.PointsModel.parse(
 
 ##
 
+print("converting the points to the precomputed format")
 
 # TODO: there should be no need to add the subpath (we should be able to specify the
 #  parent cloud volume object
@@ -156,13 +189,18 @@ sdata["molecule_baysor"] = sd.models.PointsModel.parse(
 # TODO: the view APIs show include the points
 import shutil
 
-path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor")
+import time
+start = time.time()
+path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor2")
 if path.exists():
     shutil.rmtree(path)
 from_spatialdata_points_to_precomputed_points(
     sdata["molecule_baysor"],
-    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor",
+    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+    points_name="molecule_baysor2",
+    limit=500,
 )
+print(f"conversion of points: {time.time() - start}")
 
 ##
 # pass

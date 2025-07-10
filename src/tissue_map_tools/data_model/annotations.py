@@ -1,4 +1,6 @@
 from typing import Literal, Any, Self, cast
+
+from cloudvolume import CloudVolume
 from pydantic import (
     BaseModel,
     Field,
@@ -21,6 +23,7 @@ import pandas as pd
 from numpy.random import default_rng
 import itertools
 from numpy.typing import NDArray
+import json
 
 RNG = default_rng(42)
 
@@ -48,6 +51,15 @@ SUPPORTED_DTYPES = [
     np.int8,
     "category",
 ]
+# fmt: off
+SI_PREFIXES = [
+    "Y", "Z", "E", "P", "T", "G", "M", "k", "h", "", "c", "m", "u", "µ", "n", "p", "f",
+    "a", "z", "y"
+]
+# fmt: on
+SI_SUFFIXES = ["m", "s"]
+
+si_units = [prefix + suffix for prefix in SI_PREFIXES for suffix in SI_SUFFIXES]
 
 
 class AnnotationProperty(BaseModel):
@@ -151,7 +163,7 @@ class AnnotationInfo(BaseModel):
     type: Literal["neuroglancer_annotations_v1"] = Field(..., alias="@type")
     dimensions: dict[str, tuple[int | float, str]] = Field(
         ...,
-        description="Dimensions of the annotation space, with scale and unit (m and s are supported).",
+        description="Dimensions of the annotation space, with scale and unit.",
     )
     lower_bound: list[float]
     upper_bound: list[float]
@@ -186,9 +198,10 @@ class AnnotationInfo(BaseModel):
                 )
             if not isinstance(unit, str):
                 raise ValueError(f"Unit for dimension '{key}' must be a string.")
-            if unit not in ["m", "s"]:
+            if unit not in si_units:
                 raise ValueError(
-                    f"Unit '{unit}' for dimension '{key}' is not supported. Only 'm' and 's' are allowed."
+                    f"Unit '{unit}' for dimension '{key}' is not supported. Only the "
+                    f"following combinations of SI prefixes and suffixes are allowed: prefixes: {SI_PREFIXES}; suffixes: {SI_PREFIXES} (e.g. 'um')."
                 )
             validated[key] = (scale, unit)
         return validated
@@ -1035,63 +1048,6 @@ def compute_spatial_index(
     return grid
 
 
-# def encode_spatial_index(
-#     info: AnnotationInfo,
-#     annotations: list[tuple[int, list[float], dict[str, Any]]],
-# ) -> bytes:
-#     """
-#     """
-#     pass
-#     # buf = bytearray()
-#     # count = len(annotations)
-#     # buf += struct.pack("<Q", count)
-#     #
-#     # # Encode positions and properties for all annotations
-#     # for _, positions_values, properties_values in annotations:
-#     #     buf += encode_positions_and_properties(
-#     #         info=info,
-#     #         positions_values=positions_values,
-#     #         properties_values=properties_values,
-#     #     )
-#     #
-#     # # Encode annotation ids for all annotations
-#     # for ann_id, _, _ in annotations:
-#     #     buf += struct.pack("<Q", ann_id)
-#     #
-#     # return bytes(buf)
-#
-#
-# def decode_spatial_index(
-#     info: AnnotationInfo,
-#     data: bytes,
-# ) -> list[tuple[int, list[float], dict[str, Any]]]:
-#     """
-#     """
-#     pass
-#     # (count,) = struct.unpack_from("<Q", data)
-#     # offset = 8
-#     #
-#     # decoded_annotations_data = []
-#     # # First pass: decode positions and properties
-#     # for _ in range(count):
-#     #     positions_values, properties_values, offset = decode_positions_and_properties(
-#     #         data=data,
-#     #         info=info,
-#     #         offset=offset,
-#     #     )
-#     #     decoded_annotations_data.append((positions_values, properties_values))
-#     #
-#     # # Second pass: decode annotation ids
-#     # decoded_annotations = []
-#     # for i in range(count):
-#     #     (ann_id,) = struct.unpack_from("<Q", data, offset)
-#     #     offset += 8
-#     #     positions_values, properties_values = decoded_annotations_data[i]
-#     #     decoded_annotations.append((ann_id, positions_values, properties_values))
-#     #
-#     # return decoded_annotations
-
-
 def write_spatial_index(
     info: AnnotationInfo,
     root_path: Path,
@@ -1100,7 +1056,46 @@ def write_spatial_index(
         str, list[tuple[int, list[float], dict[str, Any]]]
     ],
 ):
-    """ """
+    """
+    Writes a spatial index for annotations, grouping them by spatial chunk.
+
+    Parameters
+    ----------
+    info : AnnotationInfo
+        The annotation schema information.
+    root_path : Path
+        The root directory where the spatial index will be written.
+    spatial_key : str
+        Key indicating the level of teh spatial index
+    annotations_by_spatial_chunk : dict of str to list of tuple
+        Dictionary mapping spatial chunk identifiers (e.g., '0_0_0') to lists of
+        annotation records. Each annotation record is a tuple:
+            (id, [x, y, z], properties)
+        where:
+            id : int
+                Unique identifier for the annotation.
+            [x, y, z] : list of float
+                Coordinates of the annotation in 3D space.
+            properties : dict
+                Additional properties or attributes associated with the annotation
+                (e.g., {'x': 4153.0, 'y': 326.0, 'z': 110.1, 'gene': 21}).
+
+    Example
+    -------
+    annotations_by_spatial_chunk = {
+        '0_0_0': [
+            (6635, [4153.0, 326.0, 110.15], {'x': 4153.0, 'y': 326.0, 'z': 110.15, 'gene': 21}),
+            (6980, [4556.0, 5170.0, 55.07], {'x': 4556.0, 'y': 5170.0, 'z': 55.07, 'gene': 126}),
+            ...
+        ],
+        ...
+    }
+
+    Returns
+    -------
+    None
+        Writes spatial index files to disk.
+    """
     annotation_spatial_level: AnnotationSpatialLevel | None = None
     for spatial in info.spatial:
         if spatial.key == spatial_key:
@@ -1131,7 +1126,8 @@ def write_spatial_index(
 def read_spatial_index(
     info: AnnotationInfo,
     root_path: Path,
-) -> dict[str, dict[int, list[tuple[int, list[float], dict[str, Any]]]]]:
+    spatial_key: str,
+) -> dict[str, list[tuple[int, list[float], dict[str, Any]]]]:
     """ """
     pass
     # all_relationships_data = {}
@@ -1163,3 +1159,30 @@ def read_spatial_index(
     #             relationship_data[object_id] = decoded_data
     #     all_relationships_data[rel.id] = relationship_data
     # return all_relationships_data
+
+
+def find_annotations_from_cloud_volume(cv: CloudVolume) -> list[str]:
+    """
+    Find all annotations in a cloud volume.
+
+    Annotations do not appear to be listed in the root info file, so we need to
+    manually explore each info file for each folder in the cloud volume path.
+    """
+    annotations_names = []
+    cv_path = Path(cv.meta.path.basepath) / cv.meta.path.layer
+    for subpath in cv_path.iterdir():
+        subpath = Path(subpath)
+        if not subpath.is_dir():
+            continue
+
+        # read the info file for this annotation
+        info_file = subpath / "info"
+        if not info_file.is_file():
+            continue
+
+        with open(info_file, "r") as f:
+            info = json.load(f)
+            type_ = info.get("@type", str(subpath))
+            if type_ == "neuroglancer_annotations_v1":
+                annotations_names.append(subpath.name)
+    return annotations_names

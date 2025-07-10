@@ -8,6 +8,7 @@ from cloudvolume import CloudVolume
 from numpy.random import default_rng
 import numpy as np
 from tissue_map_tools.shard_util import get_ids_from_shard_files
+from tissue_map_tools.data_model.annotations import find_annotations_from_cloud_volume
 
 RNG = default_rng(42)
 
@@ -18,6 +19,7 @@ def view_precomputed_in_neuroglancer(
     mesh_layer_name: str | None = None,
     mesh_ids: list[int] | None = None,
     show_meshes: bool = True,
+    show_annotations: bool = True,
     port: int = 10001,
     viewer: neuroglancer.Viewer | None = None,
     open_browser: bool = True,
@@ -58,6 +60,13 @@ def view_precomputed_in_neuroglancer(
                 s.layers[mesh_layer_name] = neuroglancer.SegmentationLayer(
                     source=url + f"/{mesh_subpath}",
                     segments=mesh_ids,
+                )
+
+        if show_annotations:
+            annotations_names = find_annotations_from_cloud_volume(cv)
+            for annotation_name in annotations_names:
+                s.layers[annotation_name] = neuroglancer.AnnotationLayer(
+                    source=url + f"/{annotation_name}",
                 )
 
     if open_browser:
@@ -218,8 +227,13 @@ if __name__ == "__main__":
     #     data_path="/Users/macbook/Desktop/moffitt_precomputed",
     #     # mesh_ids=unique_labels,
     # )
-    unique_labels = np.arange(100).astype(int).tolist()
-    viewer = view_precomputed_in_napari(
+
+    # unique_labels = np.arange(100).astype(int).tolist()
+    # viewer = view_precomputed_in_napari(
+    #     data_path="/Users/macbook/Desktop/moffitt_precomputed",
+    #     mesh_ids=unique_labels,
+    # )
+    viewer = view_precomputed_in_neuroglancer(
         data_path="/Users/macbook/Desktop/moffitt_precomputed",
-        mesh_ids=unique_labels,
+        # mesh_ids=unique_labels,
     )
