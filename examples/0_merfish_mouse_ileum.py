@@ -486,19 +486,5 @@ sdata["cells_baysor"] = processed
 sdata.write(out_path / "merfish_mouse_ileum.sdata.zarr", overwrite=True)
 
 
-# Crop
-max_y = 9392
-max_x = 5721
-crop_size = 500
-cropped_sdata = sdata.query.bounding_box(
-    axes=["x", "y"],
-    min_coordinate=[np.floor(max_x/2 - crop_size/2), np.floor(max_y/2 - crop_size/2)],
-    max_coordinate=[np.floor(max_x/2 + crop_size/2), np.floor(max_y/2 + crop_size/2)],
-    target_coordinate_system="global",
-    #filter_table=False
-)
-
-cropped_sdata.write(out_path / "merfish_mouse_ileum_cropped.sdata.zarr", overwrite=True)
-
 # ##
 # Interactive(sdata)
