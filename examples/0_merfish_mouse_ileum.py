@@ -42,13 +42,16 @@ if not unzipped_path.exists():
     )
 
 # parse raw images
-data = imread(unzipped_path / "raw_data" / "dapi_stack.tif")
-data = da.reshape(data, (1, *data.shape))
-dapi_stack = sd.models.Image3DModel.parse(data)
 
-data = imread(unzipped_path / "raw_data" / "membrane_stack.tif")
-data = da.reshape(data, (1, *data.shape))
-membrane_stack = sd.models.Image3DModel.parse(data)
+dapi_data = imread(unzipped_path / "raw_data" / "dapi_stack.tif")
+dapi_data = da.reshape(dapi_data, (1, *dapi_data.shape))
+
+membrane_data = imread(unzipped_path / "raw_data" / "membrane_stack.tif")
+membrane_data = da.reshape(membrane_data, (1, *membrane_data.shape))
+
+# the data is in the format (channel, z, y, x)
+data = da.concatenate([dapi_data, membrane_data], axis=0)
+img_stack = sd.models.Image3DModel.parse(data, scale_factors=[2, 2], c_coords=["DAPI", "Membrane"])
 
 # parse transcripts locations
 points_path = unzipped_path / "raw_data" / "molecules.csv"
@@ -104,20 +107,13 @@ affine_correct_z_pixel_raster = sd.transformations.Affine(
 # um_to_pixel = pixel_to_um.inverse()
 
 sd.transformations.set_transformation(
-    dapi_stack,
+    img_stack,
     transformation=affine_correct_z_pixel_raster,
     to_coordinate_system="global",
 )
-sd.transformations.set_transformation(
-    membrane_stack,
-    transformation=affine_correct_z_pixel_raster,
-    to_coordinate_system="global",
-)
-
 sdata = sd.SpatialData.init_from_elements(
     {
-        "dapi": dapi_stack,
-        "membrane": membrane_stack,
+        "stains": img_stack,
         "molecules": molecules,
     }
 )
@@ -160,14 +156,16 @@ data = imread(
     unzipped_path / "data_analysis/cellpose/cell_boundaries/results/cellpose_dapi.tif"
 )
 dapi_labels = sd.models.Labels3DModel.parse(
-    data, transformations={"global": affine_correct_z_pixel_raster}
+    data, transformations={"global": affine_correct_z_pixel_raster},
+    scale_factors=[2, 2]
 )
 data = imread(
     unzipped_path
     / "data_analysis/cellpose/cell_boundaries/results/cellpose_membrane.tif"
 )
 membrane_labels = sd.models.Labels3DModel.parse(
-    data, transformations={"global": affine_correct_z_pixel_raster}
+    data, transformations={"global": affine_correct_z_pixel_raster},
+    scale_factors=[2, 2]
 )
 # problem in the data: the same cell across dapi_labels and membrane_labels have
 # different index value
@@ -485,6 +483,22 @@ processed = process_pseudo3D_shapes(
 # sdata["cells_baysor"] = gdf_all_layers
 sdata["cells_baysor"] = processed
 
-sdata.write("/Users/macbook/Desktop/moffitt.zarr", overwrite=True)
+sdata.write(out_path / "merfish_mouse_ileum.sdata.zarr", overwrite=True)
+
+
+# Crop
+max_y = 9392
+max_x = 5721
+crop_size = 500
+cropped_sdata = sdata.query.bounding_box(
+    axes=["x", "y"],
+    min_coordinate=[np.floor(max_x/2 - crop_size/2), np.floor(max_y/2 - crop_size/2)],
+    max_coordinate=[np.floor(max_x/2 + crop_size/2), np.floor(max_y/2 + crop_size/2)],
+    target_coordinate_system="global",
+    #filter_table=False
+)
+
+cropped_sdata.write(out_path / "merfish_mouse_ileum_cropped.sdata.zarr", overwrite=True)
+
 # ##
 # Interactive(sdata)
