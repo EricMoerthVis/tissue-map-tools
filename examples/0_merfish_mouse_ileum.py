@@ -57,7 +57,8 @@ img_stack = sd.models.Image3DModel.parse(data, scale_factors=[2, 2], c_coords=["
 points_path = unzipped_path / "raw_data" / "molecules.csv"
 df = pd.read_csv(points_path)
 molecules = sd.models.PointsModel.parse(
-    df, coordinates={"x": "x_pixel", "y": "y_pixel", "z": "z_pixel"}
+    df, coordinates={"x": "x_pixel", "y": "y_pixel", "z": "z_pixel"},
+    feature_key="gene",
 )
 
 
@@ -230,7 +231,7 @@ assert np.array_equal(molecules["x"].compute(), df_segmentation["x"])
 assert np.array_equal(molecules["y"].compute(), df_segmentation["y"])
 assert np.allclose(molecules["z"].compute(), df_segmentation["z"])
 
-points = sd.models.PointsModel.parse(df_segmentation)
+points = sd.models.PointsModel.parse(df_segmentation, feature_key="gene")
 points["cell"] = points["cell"].round(0).astype(int)
 
 sdata["gene_expression_baysor"] = adata
