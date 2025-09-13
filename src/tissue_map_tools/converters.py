@@ -29,7 +29,7 @@ RNG = default_rng(42)
 
 # behavior around this should be improved and made consistent across all the functions
 # that convert to precomputed format
-ROUNDING_FACTOR = 1000
+FACTOR = 1000
 
 
 def from_ome_zarr_04_raster_to_precomputed_raster(
@@ -152,7 +152,7 @@ def from_ome_zarr_04_raster_to_precomputed_raster(
     transposed = _transpose_dask_data_for_cloudvolume(dask_data_scale0, axes=axes)
 
     pixel_sizes = {
-        axis: round(ROUNDING_FACTOR * scale_factors[axis]) for axis in ["x", "y", "z"]
+        axis: round(FACTOR * scale_factors[axis]) for axis in ["x", "y", "z"]
     }
 
     layer_type = "segmentation" if is_labels else "image"
@@ -213,14 +213,23 @@ def from_spatialdata_raster_to_precomputed_raster(
             "currently supported."
         )
     pixel_sizes = dict(zip(["x", "y", "z"], np.diag(affine[:3, :3])))
-    pixel_sizes = {k: round(ROUNDING_FACTOR * v) for k, v in pixel_sizes.items()}
+    # the pixel sizes should be in nanometers. This code works for microns and will need
+    # to be adapted for general units
+    pixel_sizes = {k: round(FACTOR * v) for k, v in pixel_sizes.items()}
+    # voxel offset doesn't seem to work. We need to discuss this in a bug to cloudvolume
+    # we want to be able to translate the volume (after a cropping in SpatialData), using
+    # the voxel_offset parameter
+    # voxel_offset = tuple([round(t) for t in affine[:3, 3]])
 
+    ##
     to_cloudvolume(
         arr=transposed,
         layer_type=layer_type,
         cloudpath=precomputed_path,
-        resolution=[pixel_sizes["x"], pixel_sizes["y"], pixel_sizes["z"]],
+        resolution=(pixel_sizes["x"], pixel_sizes["y"], pixel_sizes["z"]),
+        # voxel_offset=voxel_offset,
     )
+    ##
     print(
         f"Converted OME-Zarr data to the Precomputed format ("
         f"{layer_type}) at {precomputed_path} with pixel sizes {pixel_sizes} and axes {_get_axes_cloudvolume(axes)}."

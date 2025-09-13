@@ -11,7 +11,6 @@ import warnings
 import numpy as np
 import shutil
 import time
-import os
 
 from tissue_map_tools.converters import (
     from_spatialdata_points_to_precomputed_points,
@@ -34,15 +33,33 @@ sdata = sd.read_zarr(f)
 
 ##
 # subset the data
-# molecules_cropped = sd.bounding_box_query(
-#     sdata["molecule_baysor"],
-#     axes=("x", "y", "z"),
-#     min_coordinate=[1500, 1500, -10],
-#     max_coordinate=[3000, 3000, 200],
-#     target_coordinate_system="global",
-# )
-# sdata["molecule_baysor"] = molecules_cropped
-##
+sdata_small = sd.bounding_box_query(
+    sdata,
+    axes=("x", "y", "z"),
+    min_coordinate=[4000, 0, -10],
+    max_coordinate=[5000, 1500, 200],
+    target_coordinate_system="global",
+)
+
+transformation = sd.transformations.get_transformation(sdata_small["dapi"])
+translation_vector = transformation.to_affine_matrix(
+    input_axes=("x", "y", "z"), output_axes=("x", "y", "z")
+)[:3, 3]
+translation = sd.transformations.Translation(translation_vector, axes=("x", "y", "z"))
+for _, element_name, _ in sdata_small.gen_spatial_elements():
+    old_transformation = sd.transformations.get_transformation(
+        sdata_small[element_name]
+    )
+    sequence = sd.transformations.Sequence([old_transformation, translation.inverse()])
+    sd.transformations.set_transformation(
+        sdata_small[element_name],
+        transformation=sequence,
+        to_coordinate_system="global",
+    )
+    transformed = sd.transform(sdata_small[element_name], to_coordinate_system="global")
+    sdata_small[element_name] = transformed
+
+sdata = sdata_small
 #
 # cells_baysor_cropped = sd.bounding_box_query(
 #     sdata["cells_baysor"],
@@ -54,48 +71,18 @@ sdata = sd.read_zarr(f)
 # sdata["cells_baysor"] = cells_baysor_cropped
 
 ##
-# create the meshes from the volumetric data
-# ome_zarr_path = sdata.path / "labels" / "dapi_labels"
-# from_ome_zarr_04_raster_to_precomputed(
-#     ome_zarr_path=str(ome_zarr_path),
-#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-#     # is_labels=True,
-# )
-
-##
-
-
-# from_spatialdata_raster_to_precomputed_raster(
-#     raster=sdata["dapi_labels"],
-#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-# )
-# from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
-#     raster=sdata["dapi_labels"],
-#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-# )
-
 from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
-    raster=sdata["membrane_labels"],
+    raster=sdata["dapi_labels"],
     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
 )
-
-# unsharded version
-# from_spatialdata_raster_to_precomputed_raster(
+# from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
 #     raster=sdata["membrane_labels"],
 #     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
 # )
-# from_precomputed_raster_to_precomputed_meshes(
-#     data_path="/Users/macbook/Desktop/moffitt_precomputed",
-#     sharded=False,
-# )
 
 
-os._exit(0)
-
-# manual fix dtypes
 ##
-
-
+# manual fix dtypes
 def make_dtypes_compatible_with_precomputed_annotations(
     df: pd.DataFrame, max_categories: int = 1000, check_for_overflow: bool = True
 ) -> pd.DataFrame:
