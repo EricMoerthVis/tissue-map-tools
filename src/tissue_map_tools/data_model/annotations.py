@@ -860,7 +860,7 @@ class GridLevel:
 
 def get_coordinates_and_kd_tree(
     points: pd.DataFrame | DaskDataFrame,
-) -> ValidNumericNDArray:
+) -> tuple[ValidNumericNDArray, KDTree]:
     """
     Extract xyz coordinates and create a KDTree.
     """
@@ -1130,6 +1130,7 @@ def read_spatial_index(
 ) -> dict[str, list[tuple[int, list[float], dict[str, Any]]]]:
     """ """
     pass
+    return {}
     # all_relationships_data = {}
     # for rel in info.relationships:
     #     if rel.sharding is not None:

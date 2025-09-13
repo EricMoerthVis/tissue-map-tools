@@ -6,6 +6,20 @@ import napari_spatialdata.constants.config
 import spatialdata as sd
 from pathlib import Path
 from numpy.random import default_rng
+import pandas as pd
+import warnings
+import numpy as np
+import shutil
+import time
+import os
+
+from tissue_map_tools.converters import (
+    from_spatialdata_points_to_precomputed_points,
+)
+
+from tissue_map_tools.igneous_converters import (
+    from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes,
+)
 
 RNG = default_rng(42)
 
@@ -41,9 +55,7 @@ sdata = sd.read_zarr(f)
 
 ##
 # create the meshes from the volumetric data
-##
 # ome_zarr_path = sdata.path / "labels" / "dapi_labels"
-#
 # from_ome_zarr_04_raster_to_precomputed(
 #     ome_zarr_path=str(ome_zarr_path),
 #     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
@@ -51,21 +63,7 @@ sdata = sd.read_zarr(f)
 # )
 
 ##
-from tissue_map_tools.converters import (
-    from_spatialdata_raster_to_precomputed_raster,
-    from_spatialdata_points_to_precomputed_points,
-)
 
-_ = from_spatialdata_raster_to_precomputed_raster
-from tissue_map_tools.igneous_converters import (
-    from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes,
-    from_spatialdata_raster_to_precomputed_raster,
-    from_precomputed_raster_to_precomputed_meshes,
-)
-
-_ = from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes
-_ = from_spatialdata_raster_to_precomputed_raster
-_ = from_precomputed_raster_to_precomputed_meshes
 
 # from_spatialdata_raster_to_precomputed_raster(
 #     raster=sdata["dapi_labels"],
@@ -91,15 +89,11 @@ from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
 #     sharded=False,
 # )
 
-import os
 
 os._exit(0)
 
 # manual fix dtypes
 ##
-import pandas as pd
-import warnings
-import numpy as np
 
 
 def make_dtypes_compatible_with_precomputed_annotations(
@@ -216,9 +210,6 @@ print("converting the points to the precomputed format")
 #  parent cloud volume object
 # TODO: the info file in the parent volume should be updated to include the points
 # TODO: the view APIs show include the points
-import shutil
-
-import time
 
 start = time.time()
 path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor2")

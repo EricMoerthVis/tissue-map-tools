@@ -487,7 +487,7 @@ def from_spatialdata_points_to_precomputed_points(
         )
     from tissue_map_tools.data_model.annotations import read_spatial_index
 
-    debug = read_spatial_index(
+    read_spatial_index(
         info=annotation_info, root_path=points_path, spatial_key="spatial2"
     )
     ##
@@ -542,7 +542,7 @@ if __name__ == "__main__":
 
         viewer = neuroglancer.Viewer()
 
-        url = f"precomputed://http://localhost:8912"
+        url = "precomputed://http://localhost:8912"
         with viewer.txn() as s:
             s.layers["points"] = neuroglancer.AnnotationLayer(source=url)
 
