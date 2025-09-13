@@ -14,6 +14,7 @@ sharded format and for creating meshes.
 from igneous.task_creation.mesh import (
     create_meshing_tasks,
     create_sharded_multires_mesh_tasks,
+    create_unsharded_multires_mesh_tasks,
 )
 from taskqueue import LocalTaskQueue
 from pathlib import Path
@@ -31,6 +32,7 @@ def from_precomputed_raster_to_precomputed_meshes(
     mesh_name: str | None = None,
     nlod: int = DEFAULT_NLOD,
     parallel: int | bool = True,
+    sharded: bool = True,
 ):
     task_queue = LocalTaskQueue(parallel=parallel)
 
@@ -38,15 +40,21 @@ def from_precomputed_raster_to_precomputed_meshes(
         layer_path=data_path,
         mip=0,
         mesh_dir=mesh_name,
-        sharded=True,
+        sharded=sharded,
     )
     task_queue.insert(forge_task)
     task_queue.execute()
 
-    merge_task = create_sharded_multires_mesh_tasks(
-        cloudpath=data_path,
-        num_lod=nlod,
-    )
+    if sharded:
+        merge_task = create_sharded_multires_mesh_tasks(
+            cloudpath=data_path,
+            num_lod=nlod,
+        )
+    else:
+        merge_task = create_unsharded_multires_mesh_tasks(
+            cloudpath=data_path,
+            num_lod=nlod,
+        )
     task_queue.insert(merge_task)
     task_queue.execute()
 

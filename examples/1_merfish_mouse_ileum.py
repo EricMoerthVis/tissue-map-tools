@@ -52,12 +52,20 @@ sdata = sd.read_zarr(f)
 
 ##
 from tissue_map_tools.converters import (
-    # from_spatialdata_raster_to_precomputed_raster,
+    from_spatialdata_raster_to_precomputed_raster,
     from_spatialdata_points_to_precomputed_points,
 )
+
+_ = from_spatialdata_raster_to_precomputed_raster
 from tissue_map_tools.igneous_converters import (
     from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes,
+    from_spatialdata_raster_to_precomputed_raster,
+    from_precomputed_raster_to_precomputed_meshes,
 )
+
+_ = from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes
+_ = from_spatialdata_raster_to_precomputed_raster
+_ = from_precomputed_raster_to_precomputed_meshes
 
 # from_spatialdata_raster_to_precomputed_raster(
 #     raster=sdata["dapi_labels"],
@@ -67,6 +75,25 @@ from tissue_map_tools.igneous_converters import (
 #     raster=sdata["dapi_labels"],
 #     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
 # )
+
+from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
+    raster=sdata["membrane_labels"],
+    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+)
+
+# unsharded version
+# from_spatialdata_raster_to_precomputed_raster(
+#     raster=sdata["membrane_labels"],
+#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+# )
+# from_precomputed_raster_to_precomputed_meshes(
+#     data_path="/Users/macbook/Desktop/moffitt_precomputed",
+#     sharded=False,
+# )
+
+import os
+
+os._exit(0)
 
 # manual fix dtypes
 ##
@@ -141,10 +168,12 @@ def make_dtypes_compatible_with_precomputed_annotations(
     old_column_order = [col for col in old_column_order if col in df.columns]
     return df[old_column_order]
 
-subset = RNG.choice(len(sdata['molecule_baysor']), 10000, replace=False)
+
+subset = RNG.choice(len(sdata["molecule_baysor"]), 10000, replace=False)
 
 print(sdata["molecule_baysor"].columns)
-subset_df = sdata["molecule_baysor"].compute().iloc[subset]
+# subset_df = sdata["molecule_baysor"].compute().iloc[subset]
+subset_df = sdata["molecule_baysor"].compute()
 subset_df = subset_df[
     [
         # working
@@ -190,6 +219,7 @@ print("converting the points to the precomputed format")
 import shutil
 
 import time
+
 start = time.time()
 path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor2")
 if path.exists():
@@ -198,17 +228,7 @@ from_spatialdata_points_to_precomputed_points(
     sdata["molecule_baysor"],
     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
     points_name="molecule_baysor2",
-    limit=500,
+    limit=1000,
+    # limit=500,
 )
 print(f"conversion of points: {time.time() - start}")
-
-##
-# pass
-# from napari_spatialdata import Interactive
-#
-# # plot the data
-# interactive = Interactive(sdata, headless=True)
-# # interactive.add_element('cells_layer_1_baysor', element_coordinate_system='global')
-# interactive.add_element("cells_baysor", element_coordinate_system="global")
-# # interactive.add_element("molecule_baysor", element_coordinate_system="global")
-# interactive.run()
