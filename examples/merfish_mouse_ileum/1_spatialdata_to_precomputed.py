@@ -12,6 +12,9 @@ import time
 from tissue_map_tools.converters import (
     from_spatialdata_points_to_precomputed_points,
 )
+from tissue_map_tools.igneous_converters import (
+    from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes,
+)
 from tissue_map_tools.data_model.annotations_utils import (
     make_dtypes_compatible_with_precomputed_annotations,
 )
@@ -68,10 +71,10 @@ sdata = sdata_small
 # sdata["cells_baysor"] = cells_baysor_cropped
 
 ##
-# from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
-#     raster=sdata["dapi_labels"],
-#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-# )
+from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
+    raster=sdata["dapi_labels"],
+    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+)
 # from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
 #     raster=sdata["membrane_labels"],
 #     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
@@ -95,20 +98,20 @@ subset_df = subset_df[
         "gene",
         "area",
         #
-        "mol_id",
-        "x_raw",
-        "y_raw",
-        "z_raw",
-        "brightness",
-        "total_magnitude",
-        "compartment",
-        "nuclei_probs",
-        "assignment_confidence",
-        #
-        "cell",
-        "is_noise",  # TODO: bool not working at the moment
+        # "mol_id",
+        # "x_raw",
+        # "y_raw",
+        # "z_raw",
+        # "brightness",
+        # "total_magnitude",
+        # "compartment",
+        # "nuclei_probs",
+        # "assignment_confidence",
+        # #
+        # "cell",
+        # "is_noise",  # TODO: bool not working at the moment
         # # "ncv_color",  # TODO: represent as RGB
-        "layer",
+        # "layer",
     ]
 ]
 sdata["molecule_baysor"] = sd.models.PointsModel.parse(
@@ -141,13 +144,13 @@ print("converting the points to the precomputed format")
 # TODO: the view APIs show include the points
 
 start = time.time()
-path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor2")
+path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor")
 if path.exists():
     shutil.rmtree(path)
 from_spatialdata_points_to_precomputed_points(
     sdata["molecule_baysor"],
     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-    points_name="molecule_baysor2",
+    points_name="molecule_baysor",
     limit=1000,
     # limit=500,
 )

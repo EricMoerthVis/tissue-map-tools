@@ -9,6 +9,7 @@ from numpy.random import default_rng
 import numpy as np
 from tissue_map_tools.shard_util import get_ids_from_shard_files
 from tissue_map_tools.data_model.annotations import find_annotations_from_cloud_volume
+from tissue_map_tools.data_model.annotations_utils import parse_annotations
 
 RNG = default_rng(42)
 
@@ -84,6 +85,7 @@ def view_precomputed_in_napari(
     mesh_ids: list[int] | None = None,
     show_raster: bool = False,
     show_meshes: bool = True,
+    show_points: bool = False,
     show_axes: bool = True,
     viewer: napari.Viewer | None = None,
     open: bool = True,
@@ -163,6 +165,27 @@ def view_precomputed_in_napari(
                 else:
                     data_mins_xyz = np.minimum(data_mins_xyz, mins).tolist()
                     data_maxs_xyz = np.maximum(data_maxs_xyz, maxs).tolist()
+
+    if not show_meshes and show_axes:
+        warnings.warn(
+            "Currently show_axes is only supported when show_meshes is True. Setting "
+            "show_axes to False."
+        )
+        show_axes = False
+
+    if show_points:
+        df = parse_annotations(data_path=Path(data_path))
+        viewer.add_points(
+            df[["z", "y", "x"]].to_numpy(),
+            properties={
+                col: df[col].to_numpy()
+                for col in df.columns
+                if col not in ["z", "y", "x"]
+            },
+            name="points",
+            size=5,
+            face_color="red",
+        )
 
     if show_axes and data_maxs_xyz:
         if not show_meshes:
