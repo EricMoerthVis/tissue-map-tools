@@ -897,6 +897,8 @@ def compute_spatial_index(
 ) -> dict[int, GridLevel]:
     # TODO: only points are supported at the moment, not lines, axis-aligned bounding
     #  boxes and ellipsoids
+    # TODO: allows to pass multiple limit values, not just a single one for all the
+    #  index levels
     if starting_grid_shape is None:
         starting_grid_shape = (1, 1, 1)
 

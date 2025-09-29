@@ -15,6 +15,7 @@ from tissue_map_tools.data_model.annotations import (
     write_spatial_index,
     read_spatial_index,
 )
+from tissue_map_tools.converters import compute_spatial_index
 
 
 def example_sharding():
@@ -691,3 +692,31 @@ def test_write_read_spatial_index(tmp_path):
         assert_dict_of_ids_positions_properties_equal(
             original_level_data, read_data_for_level
         )
+
+
+def test_compute_write_read_spatial_index(tmp_path) -> None:
+    import numpy as np
+
+    positions = np.array(
+        [
+            [11.0, 1.0, 0.0],
+            [59.9, 49.9, 10.0],
+            [109.9, 99.9, 29.9],
+            [20.0, 10.0, -5.0],
+            [30.0, 40.0, 20.0],
+            [15.0, 60.0, 0.0],
+            [45.0, 70.0, 10.0],
+            [59.9, 99.0, 25.0],
+            [70.0, 10.0, -1.0],
+            [80.0, 25.0, 5.0],
+            [109.0, 49.9, 15.0],
+        ],
+        dtype=float,
+    )
+
+    print(positions.shape)  # (11, 3)
+    grid = compute_spatial_index(
+        xyz=positions, kd_tree=None, limit=3, starting_grid_shape=(1, 1, 1)
+    )
+    grid[0].__dict__
+    # TODO: finish test

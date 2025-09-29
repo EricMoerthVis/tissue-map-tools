@@ -22,7 +22,9 @@ from tissue_map_tools.data_model.annotations import (
     write_related_object_id_index,
     write_spatial_index,
     get_coordinates_and_kd_tree,
-    SUPPORTED_DTYPES,
+)
+from tissue_map_tools.data_model.annotations_utils import (
+    from_pandas_column_to_annotation_property,
 )
 
 RNG = default_rng(42)
@@ -265,31 +267,6 @@ def from_spatialdata_points_to_precomputed_points(
     if isinstance(points, DaskDataFrame):
         points = points.compute()
 
-    def get_annotation_property(df: pd.DataFrame, column: str) -> AnnotationProperty:
-        dtype = df[column].dtype
-        enum_values = None
-        enum_labels = None
-        if dtype not in SUPPORTED_DTYPES:
-            raise ValueError(
-                f"Unsupported dtype {dtype} for column {column}. "
-                f"Supported dtypes are: {SUPPORTED_DTYPES}"
-            )
-        if dtype == "category":
-            enum_labels = df[column].cat.categories.tolist()
-            enum_values = list(range(len(enum_labels)))
-            type_ = df[column].cat.codes.dtype.name
-        elif np.issubdtype(dtype, np.integer) or np.issubdtype(dtype, np.floating):
-            type_ = dtype.name
-        else:
-            raise ValueError(f"Unsupported dtype {dtype} for column {column}. ")
-        return AnnotationProperty(
-            id=column,
-            type=type_,
-            description="",
-            enum_values=enum_values,
-            enum_labels=enum_labels,
-        )
-
     # # this is a semi-hardcoded example of a relationship; we could generalize
     # TODO: delete this code since AFAIU relationships are better suited for graphs/neighbors
     #  and storing a relationship between categorical values would require to store all the
@@ -345,7 +322,7 @@ def from_spatialdata_points_to_precomputed_points(
     ##
     spatial_columns = ["x", "y", "z"]
     properties: list[AnnotationProperty] = [
-        get_annotation_property(df=points, column=col)
+        from_pandas_column_to_annotation_property(df=points, column=col)
         for col in points.columns
         if col not in spatial_columns
     ]
