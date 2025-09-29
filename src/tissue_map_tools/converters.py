@@ -236,6 +236,7 @@ def from_spatialdata_raster_to_precomputed_raster(
     )
 
 
+# specs: https://github.com/google/neuroglancer/blob/master/src/datasource/precomputed/annotations.md
 def from_spatialdata_points_to_precomputed_points(
     points: DaskDataFrame | pd.DataFrame,
     precomputed_path: str | Path,
@@ -249,6 +250,9 @@ def from_spatialdata_points_to_precomputed_points(
     ----------
     points
     precomputed_path
+    points_name
+    limit
+    starting_grid_shape
 
     Returns
     -------
@@ -265,6 +269,11 @@ def from_spatialdata_points_to_precomputed_points(
         dtype = df[column].dtype
         enum_values = None
         enum_labels = None
+        if dtype not in SUPPORTED_DTYPES:
+            raise ValueError(
+                f"Unsupported dtype {dtype} for column {column}. "
+                f"Supported dtypes are: {SUPPORTED_DTYPES}"
+            )
         if dtype == "category":
             enum_labels = df[column].cat.categories.tolist()
             enum_values = list(range(len(enum_labels)))
@@ -272,10 +281,7 @@ def from_spatialdata_points_to_precomputed_points(
         elif np.issubdtype(dtype, np.integer) or np.issubdtype(dtype, np.floating):
             type_ = dtype.name
         else:
-            raise ValueError(
-                f"Unsupported dtype {dtype} for column {column}. "
-                f"Supported dtypes are: {SUPPORTED_DTYPES}"
-            )
+            raise ValueError(f"Unsupported dtype {dtype} for column {column}. ")
         return AnnotationProperty(
             id=column,
             type=type_,
@@ -285,6 +291,9 @@ def from_spatialdata_points_to_precomputed_points(
         )
 
     # # this is a semi-hardcoded example of a relationship; we could generalize
+    # TODO: delete this code since AFAIU relationships are better suited for graphs/neighbors
+    #  and storing a relationship between categorical values would require to store all the
+    #  points that have a certain categorical value, for each point! -> N^2 storage
     # def get_relationships_by_categorical_values(
     #     df: pd.DataFrame, column: str
     # ) -> list[AnnotationRelationship]:
@@ -332,8 +341,8 @@ def from_spatialdata_points_to_precomputed_points(
     for cluster_id, neighbors in cluster_neighbors.items():
         for neighbor in neighbors:
             id_to_cluster[neighbor] = cluster_id
-    ##
 
+    ##
     spatial_columns = ["x", "y", "z"]
     properties: list[AnnotationProperty] = [
         get_annotation_property(df=points, column=col)
@@ -347,8 +356,6 @@ def from_spatialdata_points_to_precomputed_points(
     ]
 
     ##
-    # important: neuroglancer doesn't know about the df.index, it just knows about
-    # the "iloc"; so in the variables using "index_id", we need to use the "iloc"
     # compute annotations_by_index_id, used in write_annotation_id_index()
     annotations_by_index_id: dict[
         int, tuple[list[float], dict[str, Any], dict[str, list[int]]]
@@ -358,10 +365,15 @@ def from_spatialdata_points_to_precomputed_points(
     for col in points_categorical.columns:
         points_categorical[col] = points[col].cat.codes
 
+    # important: neuroglancer doesn't know about the df.index, it just knows about
+    # the "iloc". Also, in iterrows() we do not consider the index, using an enumerate
+    # instead
     for i, (_, row) in enumerate(points.iterrows()):
-        coords = row[["x", "y", "z"]].values.tolist()
+        coords = row[spatial_columns].values.tolist()
         properties_values = {}
         for k, v in row.items():
+            if k in spatial_columns:
+                continue
             if points[k].dtype == "category":
                 k_index = points_categorical.columns.get_loc(k)
                 v = points_categorical.iloc[i, k_index]
@@ -430,6 +442,20 @@ def from_spatialdata_points_to_precomputed_points(
     precomputed_path = Path(precomputed_path)
     if points_name is None:
         points_name = f"points_{limit}"
+
+    try:
+        with open(precomputed_path / "info") as infile:
+            info = json.loads(infile.read())
+            info["annotations"] = points_name
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"Precomputed path {precomputed_path} does not exist or does not contain "
+            "an 'info' file. Please create a precomputed volume first, e.g. by using "
+            "from_ome_zarr_04_raster_to_precomputed_raster()"
+        ) from e
+    with open(precomputed_path / "info", "w") as outfile:
+        outfile.write(json.dumps(info, indent=4))
+
     points_path = precomputed_path / points_name
     if points_path.exists():
         raise FileExistsError(
@@ -443,12 +469,6 @@ def from_spatialdata_points_to_precomputed_points(
                 indent=4, by_alias=True, exclude_unset=True, exclude_none=True
             )
         )
-
-    with open(precomputed_path / "info") as infile:
-        info = json.loads(infile.read())
-        info["annotations"] = points_name
-    with open(precomputed_path / "info", "w") as outfile:
-        outfile.write(json.dumps(info, indent=4))
 
     write_annotation_id_index(
         info=annotation_info,

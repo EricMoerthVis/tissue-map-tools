@@ -16,9 +16,6 @@ from tissue_map_tools.converters import (
     from_spatialdata_points_to_precomputed_points,
 )
 
-from tissue_map_tools.igneous_converters import (
-    from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes,
-)
 
 RNG = default_rng(42)
 
@@ -71,10 +68,10 @@ sdata = sdata_small
 # sdata["cells_baysor"] = cells_baysor_cropped
 
 ##
-from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
-    raster=sdata["dapi_labels"],
-    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-)
+# from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
+#     raster=sdata["dapi_labels"],
+#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+# )
 # from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
 #     raster=sdata["membrane_labels"],
 #     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
@@ -162,22 +159,22 @@ subset_df = subset_df[
         "y",
         "z",
         "gene",
-        # "area",
+        "area",
         #
-        # "mol_id",
-        # "x_raw",
-        # "y_raw",
-        # "z_raw",
-        # "brightness",
-        # "total_magnitude",
-        # "compartment",
-        # "nuclei_probs",
-        # "assignment_confidence",
+        "mol_id",
+        "x_raw",
+        "y_raw",
+        "z_raw",
+        "brightness",
+        "total_magnitude",
+        "compartment",
+        "nuclei_probs",
+        "assignment_confidence",
         #
-        # "cell",
-        # # "is_noise",  # TODO: bool not working at the moment
+        "cell",
+        "is_noise",  # TODO: bool not working at the moment
         # # "ncv_color",  # TODO: represent as RGB
-        # "layer",
+        "layer",
     ]
 ]
 sdata["molecule_baysor"] = sd.models.PointsModel.parse(
@@ -190,7 +187,18 @@ sdata["molecule_baysor"] = sd.models.PointsModel.parse(
 
 
 ##
-
+# debug
+points = sdata["molecule_baysor"].compute().iloc[:2]
+print("point 0")
+print(points.iloc[0])
+print("")
+print("point 1")
+print(points.iloc[1])
+print("")
+print(points.x.dtype)
+# print(points.gene.cat.categories)
+print(points.gene.cat.categories.get_loc(points.gene.iloc[0]))
+##
 print("converting the points to the precomputed format")
 
 # TODO: there should be no need to add the subpath (we should be able to specify the
@@ -205,7 +213,7 @@ if path.exists():
 from_spatialdata_points_to_precomputed_points(
     sdata["molecule_baysor"],
     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-    points_name="molecule_baysor2",
+    points_name="molecule_baysor3",
     limit=1000,
     # limit=500,
 )

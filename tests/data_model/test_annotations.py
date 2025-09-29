@@ -1,4 +1,5 @@
 import pytest
+from typing import Any
 import numpy as np
 import tempfile
 from pathlib import Path
@@ -11,6 +12,8 @@ from tissue_map_tools.data_model.annotations import (
     read_annotation_id_index,
     write_related_object_id_index,
     read_related_object_id_index,
+    write_spatial_index,
+    read_spatial_index,
 )
 
 
@@ -29,9 +32,9 @@ def example_sharding():
 def example_info():
     return {
         "@type": "neuroglancer_annotations_v1",
-        "dimensions": {"x": [1.0, "m"], "y": [1.0, "m"], "z": [40.0, "m"]},
-        "lower_bound": [0, 0, 0],
-        "upper_bound": [100, 100, 10],
+        "dimensions": {"x": [100.0, "m"], "y": [100.0, "m"], "z": [40.0, "m"]},
+        "lower_bound": [10, 0, -10],
+        "upper_bound": [110, 100, 30],
         "annotation_type": "POINT",
         "properties": [
             {"id": "color", "type": "rgb"},
@@ -53,9 +56,16 @@ def example_info():
                 "key": "spatial0",
                 "sharding": example_sharding(),
                 "grid_shape": [1, 1, 1],
-                "chunk_size": [100.0, 100.0, 10.0],
-                "limit": 1000,
-            }
+                "chunk_size": [100.0, 100.0, 40.0],
+                "limit": 3,
+            },
+            {
+                "key": "spatial1",
+                "sharding": example_sharding(),
+                "grid_shape": [2, 2, 1],
+                "chunk_size": [50.0, 50.0, 40.0],
+                "limit": 3,
+            },
         ],
     }
 
@@ -64,7 +74,7 @@ def test_annotation_info_valid():
     info = AnnotationInfo(**example_info())
     assert info.type == "neuroglancer_annotations_v1"
     assert info.annotation_type == "POINT"
-    assert info.dimensions["x"] == (1.0, "m")
+    assert info.dimensions["x"] == (100.0, "m")
     assert info.properties[0].id == "color"
     assert info.by_id.sharding is not None
     assert info.spatial[0].grid_shape == [1, 1, 1]
@@ -463,6 +473,30 @@ def test_write_read_annotation_id_index():
             assert original_rels == read_rels
 
 
+def assert_dict_of_ids_positions_properties_equal(
+    a: dict[str | int, list[tuple[int, list[float], dict[str, Any]]]],
+    b: dict[str | int, list[tuple[int, list[float], dict[str, Any]]]],
+) -> None:
+    assert set(a.keys()) == set(b.keys())
+    for key in a.keys():
+        a_list = a[key]
+        b_list = b[key]
+        assert len(a_list) == len(b_list)
+        for i in range(len(a_list)):
+            a_id, a_pos, a_props = a_list[i]
+            b_id, b_pos, b_props = b_list[i]
+            assert a_id == b_id
+            assert np.allclose(a_pos, b_pos)
+            assert a_props.keys() == b_props.keys()
+            for prop_key in a_props.keys():
+                a_val = a_props[prop_key]
+                b_val = b_props[prop_key]
+                if isinstance(a_val, list):
+                    assert a_val == b_val
+                else:
+                    assert np.allclose(a_val, b_val)
+
+
 def test_write_read_related_object_id_index():
     """Test writing and reading the related object ID index."""
     info = AnnotationInfo(**example_info())
@@ -517,21 +551,9 @@ def test_write_read_related_object_id_index():
         assert annotations_by_object_id.keys() == read_data.keys()
         for rel_id, original_rel_data in annotations_by_object_id.items():
             read_rel_data = read_data[rel_id]
-            assert original_rel_data.keys() == read_rel_data.keys()
-            for obj_id, original_ann_list in original_rel_data.items():
-                read_ann_list = read_rel_data[obj_id]
-                assert len(original_ann_list) == len(read_ann_list)
-                for i in range(len(original_ann_list)):
-                    original_ann_id, original_pos, original_props = original_ann_list[i]
-                    read_ann_id, read_pos, read_props = read_ann_list[i]
-
-                    assert original_ann_id == read_ann_id
-                    assert np.allclose(original_pos, read_pos)
-                    assert original_props["color"] == read_props["color"]
-                    assert np.allclose(
-                        original_props["confidence"], read_props["confidence"]
-                    )
-                    assert original_props["cell_type"] == read_props["cell_type"]
+            assert_dict_of_ids_positions_properties_equal(
+                original_rel_data, read_rel_data
+            )
 
 
 def test_enum_in_example_info():
@@ -541,3 +563,131 @@ def test_enum_in_example_info():
     assert prop is not None
     assert prop.enum_values == [0, 1, 2]
     assert prop.enum_labels == ["A", "B", "C"]
+
+
+def test_write_read_spatial_index(tmp_path):
+    """Test writing and reading the spatial index."""
+    info = AnnotationInfo(**example_info())
+    # Unsharded for this test
+    for spatial in info.spatial:
+        spatial.sharding = None
+
+    # Helper to keep properties consistent with schema
+    def props(color: list[int], confidence: float, cell_type: int) -> dict[str, Any]:
+        return {
+            "color": color,
+            "confidence": confidence,
+            "cell_type": cell_type,
+        }
+
+    # Construct annotations matching the schema and spatial chunking
+    annotations = {
+        "spatial0": {
+            # single chunk covering the whole range
+            "1_1_1": [
+                (
+                    1,
+                    [11.0, 1.0, 0.0],
+                    props([255, 0, 0], 0.9, 0),
+                ),
+                (
+                    2,
+                    [59.9, 49.9, 10.0],
+                    props([0, 255, 0], 0.8, 1),
+                ),
+                (
+                    3,
+                    [109.9, 99.9, 29.9],
+                    props([0, 0, 255], 0.7, 2),
+                ),
+            ]
+        },
+        "spatial1": {
+            # left (x), bottom (y): x in [10,60), y in [0,50)
+            "1_1_1": [
+                (
+                    4,
+                    [20.0, 10.0, -5.0],
+                    props([255, 128, 0], 0.85, 1),
+                ),
+                (
+                    5,
+                    [30.0, 40.0, 20.0],
+                    props([128, 0, 255], 0.65, 0),
+                ),
+            ],
+            # left (x), top (y): x in [10,60), y in [50,100)
+            "1_2_1": [
+                (
+                    6,
+                    [15.0, 60.0, 0.0],
+                    props([0, 200, 200], 0.95, 2),
+                ),
+                (
+                    7,
+                    [45.0, 70.0, 10.0],
+                    props([200, 0, 200], 0.55, 0),
+                ),
+                (
+                    8,
+                    [59.9, 99.0, 25.0],
+                    props([50, 100, 150], 0.75, 1),
+                ),
+            ],
+            # right (x), bottom (y): x in [60,110), y in [0,50)
+            "2_1_1": [
+                (
+                    9,
+                    [70.0, 10.0, -1.0],
+                    props([20, 220, 60], 0.6, 2),
+                ),
+                (
+                    10,
+                    [80.0, 25.0, 5.0],
+                    props([220, 20, 60], 0.7, 1),
+                ),
+                (
+                    11,
+                    [109.0, 49.9, 15.0],
+                    props([60, 60, 220], 0.8, 0),
+                ),
+            ],
+            # right (x), top (y): empty
+            "2_2_1": [],
+        },
+    }
+
+    # Write all spatial levels
+    for spatial_level in info.spatial:
+        write_spatial_index(
+            info=info,
+            root_path=tmp_path,
+            spatial_key=spatial_level.key,
+            annotations_by_spatial_chunk=annotations[spatial_level.key],
+        )
+
+    # Verify files exist for each chunk written
+    for spatial_level in info.spatial:
+        index_dir = tmp_path / spatial_level.key
+        assert index_dir.is_dir()
+        for chunk_name, ann_list in annotations[spatial_level.key].items():
+            # Always create a file, even for empty chunk lists
+            assert (index_dir / chunk_name).is_file()
+            # Optional: ensure empty files only contain the number 0 as an uint64le
+            if len(ann_list) == 0:
+                with open(index_dir / chunk_name, "rb") as f:
+                    data = f.read()
+                    assert data == (0).to_bytes(8, byteorder="little")
+
+    # Read back and verify content integrity
+    for spatial_level in info.spatial:
+        read_data_for_level = read_spatial_index(
+            info=info,
+            root_path=tmp_path,
+            spatial_key=spatial_level.key,
+        )
+
+        original_level_data = annotations[spatial_level.key]
+        assert_dict_of_ids_positions_properties_equal(
+            original_level_data, read_data_for_level
+        )

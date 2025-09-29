@@ -388,7 +388,7 @@ def encode_positions_and_properties_and_relationships_via_single_annotation(
     relationships_values: dict[str, list[int]],
 ) -> bytes:
     """
-    Encode positions, properties and relationships using the single annotation encoding
+    Encode positions, properties, and relationships using the single annotation encoding
 
     Parameters
     ----------
@@ -691,7 +691,7 @@ def write_related_object_id_index(
     annotations_by_object_id
         A dictionary mapping relationship id to a dictionary mapping object id to a list
         of annotations. Each annotation is a tuple of (annotation id, position values,
-        property values).
+        property dict).
 
     Raises
     ------
@@ -718,6 +718,10 @@ def write_related_object_id_index(
                 )
                 with open(index_dir / str(object_id), "wb") as f:
                     f.write(encoded_data)
+        else:
+            raise ValueError(
+                f"No annotations found for relationship id '{rel.id}' in the provided data."
+            )
 
 
 def read_related_object_id_index(
@@ -738,7 +742,7 @@ def read_related_object_id_index(
     -------
     A dictionary mapping relationship id to a dictionary mapping object id to a list
     of annotations. Each annotation is a tuple of (annotation id, position values,
-    property values).
+    property dict).
 
     Raises
     ------
@@ -761,6 +765,7 @@ def read_related_object_id_index(
             )
 
         relationship_data = {}
+        # the order of the items in the dict is arbitrary
         for fpath in index_dir.iterdir():
             if fpath.is_file():
                 if re.match(r"^\d+$", fpath.name) is None:
@@ -870,11 +875,15 @@ def get_coordinates_and_kd_tree(
         xyz = points[["x", "y", "z"]].compute().values
     else:
         xyz = points[["x", "y", "z"]].values
-    if xyz.dtype not in SUPPORTED_DTYPES:
+    dtype = xyz.dtype
+    if not (
+        dtype in SUPPORTED_DTYPES
+        and (np.issubdtype(dtype, np.integer) or np.issubdtype(dtype, np.floating))
+    ):
         # TODO: make a test for this
         raise TypeError(
-            f"Unsupported type for xyz coordinates: {type(xyz).__name__}; supported "
-            f"types are {ValidNumericNDArray.__args__}."
+            f"Unsupported type for xyz coordinates: {type(xyz).__name__}. Supported "
+            f"types are numerical types from: {SUPPORTED_DTYPES}."
         )
     kd_tree = KDTree(xyz)
     return xyz, kd_tree
@@ -1057,26 +1066,26 @@ def write_spatial_index(
     ],
 ):
     """
-    Writes a spatial index for annotations, grouping them by spatial chunk.
+    Writes a spatial index for annotations, grouping them by spatial chunks.
 
     Parameters
     ----------
-    info : AnnotationInfo
+    info
         The annotation schema information.
-    root_path : Path
+    root_path
         The root directory where the spatial index will be written.
-    spatial_key : str
-        Key indicating the level of teh spatial index
-    annotations_by_spatial_chunk : dict of str to list of tuple
+    spatial_key
+        Key indicating the level of the spatial index
+    annotations_by_spatial_chunk
         Dictionary mapping spatial chunk identifiers (e.g., '0_0_0') to lists of
         annotation records. Each annotation record is a tuple:
             (id, [x, y, z], properties)
         where:
-            id : int
+            id
                 Unique identifier for the annotation.
-            [x, y, z] : list of float
+            [x, y, z]
                 Coordinates of the annotation in 3D space.
-            properties : dict
+            properties
                 Additional properties or attributes associated with the annotation
                 (e.g., {'x': 4153.0, 'y': 326.0, 'z': 110.1, 'gene': 21}).
 
@@ -1114,12 +1123,12 @@ def write_spatial_index(
     index_dir = root_path / annotation_spatial_level.key
     index_dir.mkdir(parents=True, exist_ok=True)
 
-    for cell_name, annotations in annotations_by_spatial_chunk.items():
+    for chunk_name, annotations in annotations_by_spatial_chunk.items():
         encoded_data = encode_positions_and_properties_via_multiple_annotation(
             info=info,
             annotations=annotations,
         )
-        with open(index_dir / str(cell_name), "wb") as f:
+        with open(index_dir / str(chunk_name), "wb") as f:
             f.write(encoded_data)
 
 
@@ -1128,38 +1137,53 @@ def read_spatial_index(
     root_path: Path,
     spatial_key: str,
 ) -> dict[str, list[tuple[int, list[float], dict[str, Any]]]]:
-    """ """
-    pass
-    return {}
-    # all_relationships_data = {}
-    # for rel in info.relationships:
-    #     if rel.sharding is not None:
-    #         raise NotImplementedError(
-    #             f"Sharded related object ID index reading for relationship '{rel.id}' is not implemented."
-    #         )
-    #
-    #     index_dir = root_path / rel.key
-    #     if not index_dir.is_dir():
-    #         raise FileNotFoundError(
-    #             f"Related object ID index directory '{index_dir}' does not exist."
-    #         )
-    #
-    #     relationship_data = {}
-    #     for fpath in index_dir.iterdir():
-    #         if fpath.is_file():
-    #             if re.match(r"^\d+$", fpath.name) is None:
-    #                 continue
-    #             object_id = int(fpath.name)
-    #
-    #             with open(fpath, "rb") as f:
-    #                 encoded_data = f.read()
-    #
-    #             decoded_data = decode_related_object_id_index(
-    #                 data=encoded_data, info=info
-    #             )
-    #             relationship_data[object_id] = decoded_data
-    #     all_relationships_data[rel.id] = relationship_data
-    # return all_relationships_data
+    """
+    Read a spatial index for annotations from disk, grouping them by spatial chunks.
+
+    Parameters
+    ----------
+    info
+        The annotation schema information.
+    root_path
+        The root directory where the spatial index is stored.
+    spatial_key
+        The key indicating the level of the spatial index.
+
+    Returns
+    -------
+    A dictionary mapping spatial chunk identifiers (e.g., '0_0_0') to lists of
+    annotation records. Each annotation record is a tuple:
+        (id, [x, y, z], properties)
+    where:
+        id
+            Unique identifier for the annotation.
+        [x, y, z]
+            Coordinates of the annotation in 3D space.
+        properties
+            Additional properties or attributes associated with the annotation
+    """
+    index_dir = root_path / spatial_key
+    if not index_dir.is_dir():
+        raise FileNotFoundError(
+            f"Spaital index directory '{index_dir}' does not exist."
+        )
+    annotations_by_spatial_chunk: dict[
+        str, list[tuple[int, list[float], dict[str, Any]]]
+    ] = {}
+    for fpath in index_dir.iterdir():
+        # assuming 3D data
+        if fpath.is_file():
+            if re.match(r"^\d+_\d+_\d+$", fpath.name) is None:
+                continue
+            chunk_name = fpath.name
+            with open(fpath, "rb") as f:
+                encoded_data = f.read()
+
+            decoded_data = decode_positions_and_properties_via_multiple_annotation(
+                info=info, data=encoded_data
+            )
+            annotations_by_spatial_chunk[chunk_name] = decoded_data
+    return annotations_by_spatial_chunk
 
 
 def find_annotations_from_cloud_volume(cv: CloudVolume) -> list[str]:
