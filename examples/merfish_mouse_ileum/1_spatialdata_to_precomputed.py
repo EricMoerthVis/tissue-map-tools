@@ -12,7 +12,7 @@ import time
 from tissue_map_tools.converters import (
     from_spatialdata_points_to_precomputed_points,
 )
-from tissue_map_tools.igneous_converters import (
+from tissue_map_tools.igneous_converters import (  # noqa: F401
     from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes,
 )
 from tissue_map_tools.data_model.annotations_utils import (
@@ -71,10 +71,10 @@ sdata = sdata_small
 # sdata["cells_baysor"] = cells_baysor_cropped
 
 ##
-from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
-    raster=sdata["dapi_labels"],
-    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-)
+# from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
+#     raster=sdata["dapi_labels"],
+#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+# )
 # from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
 #     raster=sdata["membrane_labels"],
 #     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
@@ -121,6 +121,11 @@ sdata["molecule_baysor"] = sd.models.PointsModel.parse(
         check_for_overflow=True,
     )
 )
+
+# TODO: temporary workaround: raster data converted to precomputed expresses units in nm
+#  therefore let's multiply the points by 1000
+for ax in ["x", "y", "z"]:
+    sdata["molecule_baysor"][ax] = sdata["molecule_baysor"][ax] * 1000
 
 
 ##

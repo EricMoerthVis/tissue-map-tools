@@ -12,5 +12,11 @@ if __name__ == "__main__":
     # parse annotations
     df_annotations = parse_annotations(data_path)
     print(df_annotations)
+    print(df_annotations["x"].max())
+    print(df_annotations["y"].max())
+    print(df_annotations["z"].max())
+    print(df_annotations["x"].min())
+    print(df_annotations["y"].min())
+    print(df_annotations["z"].min())
 
     pass

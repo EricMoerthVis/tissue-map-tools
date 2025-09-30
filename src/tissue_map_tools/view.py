@@ -176,15 +176,15 @@ def view_precomputed_in_napari(
     if show_points:
         df = parse_annotations(data_path=Path(data_path))
         viewer.add_points(
-            df[["z", "y", "x"]].to_numpy(),
+            df[["x", "y", "z"]].to_numpy(),
             properties={
                 col: df[col].to_numpy()
                 for col in df.columns
-                if col not in ["z", "y", "x"]
+                if col not in ["x", "y", "z"]
             },
             name="points",
-            size=5,
-            face_color="red",
+            size=1000,
+            face_color="white",
         )
 
     if show_axes and data_maxs_xyz:

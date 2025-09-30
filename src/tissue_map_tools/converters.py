@@ -395,7 +395,7 @@ def from_spatialdata_points_to_precomputed_points(
     spatial: list[dict[str, Any]] = []
     kw = {
         "@type": "neuroglancer_annotations_v1",
-        "dimensions": {"x": [1.0, "um"], "y": [1.0, "um"], "z": [1.0, "um"]},
+        "dimensions": {"x": [1.0, "nm"], "y": [1.0, "nm"], "z": [1.0, "nm"]},
         "lower_bound": grid[0].mins,
         "upper_bound": grid[0].maxs,
         "annotation_type": "POINT",
