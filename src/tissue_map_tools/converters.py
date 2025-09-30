@@ -345,11 +345,12 @@ def from_spatialdata_points_to_precomputed_points(
     # important: neuroglancer doesn't know about the df.index, it just knows about
     # the "iloc". Also, in iterrows() we do not consider the index, using an enumerate
     # instead
-    for i, (_, row) in enumerate(points.iterrows()):
-        coords = row[spatial_columns].values.tolist()
+    for i, row in enumerate(points.itertuples()):
+        coords = [getattr(row, col) for col in spatial_columns]
+        row_dict = row._asdict()
         properties_values = {}
-        for k, v in row.items():
-            if k in spatial_columns:
+        for k, v in row_dict.items():
+            if k in spatial_columns or k == "Index":
                 continue
             if points[k].dtype == "category":
                 k_index = points_categorical.columns.get_loc(k)
@@ -420,16 +421,16 @@ def from_spatialdata_points_to_precomputed_points(
     if points_name is None:
         points_name = f"points_{limit}"
 
-    try:
-        with open(precomputed_path / "info") as infile:
-            info = json.loads(infile.read())
-            info["annotations"] = points_name
-    except FileNotFoundError as e:
-        raise FileNotFoundError(
-            f"Precomputed path {precomputed_path} does not exist or does not contain "
-            "an 'info' file. Please create a precomputed volume first, e.g. by using "
-            "from_ome_zarr_04_raster_to_precomputed_raster()"
-        ) from e
+    root_info_file = precomputed_path / "info"
+    if not root_info_file.exists():
+        # create empty precomputed volume, since points require a root object to exist
+        to_cloudvolume(
+            cloudpath=str(precomputed_path), arr=dask.array.from_array(np.array([[[]]]))
+        )
+
+    with open(precomputed_path / "info") as infile:
+        info = json.loads(infile.read())
+        info["annotations"] = points_name
     with open(precomputed_path / "info", "w") as outfile:
         outfile.write(json.dumps(info, indent=4))
 
@@ -491,11 +492,6 @@ def from_spatialdata_points_to_precomputed_points(
             spatial_key=spatial_key,
             annotations_by_spatial_chunk=annotations_by_spatial_chunk,
         )
-    from tissue_map_tools.data_model.annotations import read_spatial_index
-
-    read_spatial_index(
-        info=annotation_info, root_path=points_path, spatial_key="spatial2"
-    )
     ##
 
 

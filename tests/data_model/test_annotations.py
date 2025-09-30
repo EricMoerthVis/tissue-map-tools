@@ -1,6 +1,8 @@
 import pytest
+import pandas as pd
 from typing import Any
 import numpy as np
+from numpy.typing import NDArray
 import tempfile
 from pathlib import Path
 from pydantic import ValidationError
@@ -15,7 +17,10 @@ from tissue_map_tools.data_model.annotations import (
     write_spatial_index,
     read_spatial_index,
 )
-from tissue_map_tools.converters import compute_spatial_index
+from tissue_map_tools.converters import (
+    compute_spatial_index,
+    from_spatialdata_points_to_precomputed_points,
+)
 
 
 def example_sharding():
@@ -69,6 +74,102 @@ def example_info():
             },
         ],
     }
+
+
+def example_annotations():
+    def _props(color: list[int], confidence: float, cell_type: int) -> dict[str, Any]:
+        # helper function
+        return {
+            "color": color,
+            "confidence": confidence,
+            "cell_type": cell_type,
+        }
+
+    return {
+        "spatial0": {
+            # single chunk covering the whole range
+            "1_1_1": [
+                (
+                    1,
+                    [11.0, 1.0, 0.0],
+                    _props([255, 0, 0], 0.9, 0),
+                ),
+                (
+                    2,
+                    [59.9, 49.9, 10.0],
+                    _props([0, 255, 0], 0.8, 1),
+                ),
+                (
+                    3,
+                    [109.9, 99.9, 29.9],
+                    _props([0, 0, 255], 0.7, 2),
+                ),
+            ]
+        },
+        "spatial1": {
+            # left (x), bottom (y): x in [10,60), y in [0,50)
+            "1_1_1": [
+                (
+                    4,
+                    [20.0, 10.0, -5.0],
+                    _props([255, 128, 0], 0.85, 1),
+                ),
+                (
+                    5,
+                    [30.0, 40.0, 20.0],
+                    _props([128, 0, 255], 0.65, 0),
+                ),
+            ],
+            # left (x), top (y): x in [10,60), y in [50,100)
+            "1_2_1": [
+                (
+                    6,
+                    [15.0, 60.0, 0.0],
+                    _props([0, 200, 200], 0.95, 2),
+                ),
+                (
+                    7,
+                    [45.0, 70.0, 10.0],
+                    _props([200, 0, 200], 0.55, 0),
+                ),
+                (
+                    8,
+                    [59.9, 99.0, 25.0],
+                    _props([50, 100, 150], 0.75, 1),
+                ),
+            ],
+            # right (x), bottom (y): x in [60,110), y in [0,50)
+            "2_1_1": [
+                (
+                    9,
+                    [70.0, 10.0, -1.0],
+                    _props([20, 220, 60], 0.6, 2),
+                ),
+                (
+                    10,
+                    [80.0, 25.0, 5.0],
+                    _props([220, 20, 60], 0.7, 1),
+                ),
+                (
+                    11,
+                    [109.0, 49.9, 15.0],
+                    _props([60, 60, 220], 0.8, 0),
+                ),
+            ],
+            # right (x), top (y): empty
+            "2_2_1": [],
+        },
+    }
+
+
+def example_positions() -> NDArray[float]:
+    data = []
+    annotations = example_annotations()
+    for spatial_level in annotations.values():
+        for chunk_annotations in spatial_level.values():
+            for point_annotations in chunk_annotations:
+                data.append(point_annotations[1])
+    return np.array(data, dtype=np.float32)
 
 
 def test_annotation_info_valid():
@@ -573,90 +674,7 @@ def test_write_read_spatial_index(tmp_path):
     for spatial in info.spatial:
         spatial.sharding = None
 
-    # Helper to keep properties consistent with schema
-    def props(color: list[int], confidence: float, cell_type: int) -> dict[str, Any]:
-        return {
-            "color": color,
-            "confidence": confidence,
-            "cell_type": cell_type,
-        }
-
-    # Construct annotations matching the schema and spatial chunking
-    annotations = {
-        "spatial0": {
-            # single chunk covering the whole range
-            "1_1_1": [
-                (
-                    1,
-                    [11.0, 1.0, 0.0],
-                    props([255, 0, 0], 0.9, 0),
-                ),
-                (
-                    2,
-                    [59.9, 49.9, 10.0],
-                    props([0, 255, 0], 0.8, 1),
-                ),
-                (
-                    3,
-                    [109.9, 99.9, 29.9],
-                    props([0, 0, 255], 0.7, 2),
-                ),
-            ]
-        },
-        "spatial1": {
-            # left (x), bottom (y): x in [10,60), y in [0,50)
-            "1_1_1": [
-                (
-                    4,
-                    [20.0, 10.0, -5.0],
-                    props([255, 128, 0], 0.85, 1),
-                ),
-                (
-                    5,
-                    [30.0, 40.0, 20.0],
-                    props([128, 0, 255], 0.65, 0),
-                ),
-            ],
-            # left (x), top (y): x in [10,60), y in [50,100)
-            "1_2_1": [
-                (
-                    6,
-                    [15.0, 60.0, 0.0],
-                    props([0, 200, 200], 0.95, 2),
-                ),
-                (
-                    7,
-                    [45.0, 70.0, 10.0],
-                    props([200, 0, 200], 0.55, 0),
-                ),
-                (
-                    8,
-                    [59.9, 99.0, 25.0],
-                    props([50, 100, 150], 0.75, 1),
-                ),
-            ],
-            # right (x), bottom (y): x in [60,110), y in [0,50)
-            "2_1_1": [
-                (
-                    9,
-                    [70.0, 10.0, -1.0],
-                    props([20, 220, 60], 0.6, 2),
-                ),
-                (
-                    10,
-                    [80.0, 25.0, 5.0],
-                    props([220, 20, 60], 0.7, 1),
-                ),
-                (
-                    11,
-                    [109.0, 49.9, 15.0],
-                    props([60, 60, 220], 0.8, 0),
-                ),
-            ],
-            # right (x), top (y): empty
-            "2_2_1": [],
-        },
-    }
+    annotations = example_annotations()
 
     # Write all spatial levels
     for spatial_level in info.spatial:
@@ -694,29 +712,44 @@ def test_write_read_spatial_index(tmp_path):
         )
 
 
-def test_compute_write_read_spatial_index(tmp_path) -> None:
-    import numpy as np
+def test_compute_spatial_index(tmp_path: Path) -> None:
+    positions = example_positions()
+    assert positions.shape == (11, 3)
 
-    positions = np.array(
-        [
-            [11.0, 1.0, 0.0],
-            [59.9, 49.9, 10.0],
-            [109.9, 99.9, 29.9],
-            [20.0, 10.0, -5.0],
-            [30.0, 40.0, 20.0],
-            [15.0, 60.0, 0.0],
-            [45.0, 70.0, 10.0],
-            [59.9, 99.0, 25.0],
-            [70.0, 10.0, -1.0],
-            [80.0, 25.0, 5.0],
-            [109.0, 49.9, 15.0],
-        ],
-        dtype=float,
-    )
-
-    print(positions.shape)  # (11, 3)
     grid = compute_spatial_index(
         xyz=positions, kd_tree=None, limit=3, starting_grid_shape=(1, 1, 1)
     )
-    grid[0].__dict__
-    # TODO: finish test
+    # two spatial levels expected
+    assert len(grid) == 2
+
+    # level 0 should have a single chunk, with 3 points
+    level0 = grid[0]
+    assert len(level0.populated_cells) == 1
+    assert len(next(iter(level0.populated_cells.values()))) == 3
+
+    # level 1 should have 3 chunks, with respectively 3, 3, 2 points (=1 empty chunk)
+    level1 = grid[1]
+    # the empty chunk is not included in populated_cells
+    assert len(level1.populated_cells) == 3
+    counts = sorted(len(v) for v in level1.populated_cells.values())
+    assert counts == [2, 3, 3]
+
+
+def test_write_read_spatial_index_from_pandas(tmp_path: Path) -> None:
+    positions = example_positions()
+    assert positions.shape == (11, 3)
+    df = pd.DataFrame(positions, columns=["x", "y", "z"])
+    # TODO: add one annotation for each supported dtype
+    df["value"] = np.arange(11, dtype="int32")
+
+    ##
+    from_spatialdata_points_to_precomputed_points(
+        points=df,
+        precomputed_path=tmp_path,
+        points_name="test",
+        limit=3,
+        starting_grid_shape=(1, 1, 1),
+    )
+    pass
+    # now read the index back and try to see if the viz is correct
+    ##
