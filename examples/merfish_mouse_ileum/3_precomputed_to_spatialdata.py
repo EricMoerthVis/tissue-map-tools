@@ -18,5 +18,6 @@ if __name__ == "__main__":
     print(df_annotations["x"].min())
     print(df_annotations["y"].min())
     print(df_annotations["z"].min())
+    print(df_annotations.iloc[0])
 
     pass

@@ -345,6 +345,8 @@ def from_spatialdata_points_to_precomputed_points(
     # important: neuroglancer doesn't know about the df.index, it just knows about
     # the "iloc". Also, in iterrows() we do not consider the index, using an enumerate
     # instead
+    # TODO: actually, we should probably have the id of the points equal to the index,
+    #  instead of resetting it to a contiguous range
     for i, row in enumerate(points.itertuples()):
         coords = [getattr(row, col) for col in spatial_columns]
         row_dict = row._asdict()

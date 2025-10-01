@@ -21,6 +21,7 @@ from tissue_map_tools.converters import (
     compute_spatial_index,
     from_spatialdata_points_to_precomputed_points,
 )
+from tissue_map_tools.data_model.annotations_utils import parse_annotations
 
 
 def example_sharding():
@@ -741,6 +742,9 @@ def test_write_read_spatial_index_from_pandas(tmp_path: Path) -> None:
     df = pd.DataFrame(positions, columns=["x", "y", "z"])
     # TODO: add one annotation for each supported dtype
     df["value"] = np.arange(11, dtype="int32")
+    df["categorical"] = pd.Categorical(
+        ["A", "B", "C", "A", "B", "C", "A", "B", "C", "A", "B"]
+    )
 
     ##
     from_spatialdata_points_to_precomputed_points(
@@ -750,6 +754,11 @@ def test_write_read_spatial_index_from_pandas(tmp_path: Path) -> None:
         limit=3,
         starting_grid_shape=(1, 1, 1),
     )
-    pass
     # now read the index back and try to see if the viz is correct
-    ##
+    df_parsed = parse_annotations(data_path=tmp_path)
+    df_parsed = df_parsed.sort_values(by=["value"]).drop(
+        ["__spatial_index__", "__chunk_key__"], axis=1
+    )
+    df.index = list(df.index)
+    df.index = df.index.astype(np.uint64)
+    pd.testing.assert_frame_equal(df, df_parsed)

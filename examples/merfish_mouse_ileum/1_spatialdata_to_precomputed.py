@@ -96,7 +96,7 @@ subset_df = subset_df[
         "y",
         "z",
         "gene",
-        "area",
+        # "area",
         #
         # "mol_id",
         # "x_raw",

@@ -173,6 +173,21 @@ def parse_annotations(data_path: Path) -> pd.DataFrame:
     df_properties = from_annotation_property_to_pandas_column(
         annotations_info.properties
     )
+    # for the dtypes
+    df_merged = pd.concat(
+        [
+            df_positions,
+            df_properties,
+            pd.DataFrame(
+                {
+                    "__spatial_index__": pd.Series([], dtype=object),
+                    "__chunk_key__": pd.Series([], dtype=object),
+                    "index": pd.Series([], dtype=np.uint64),
+                }
+            ),
+        ],
+        axis=1,
+    )
 
     df_data: dict[str, Any] = {
         col: [] for col in list(df_positions.columns) + list(df_properties.columns)
@@ -186,8 +201,20 @@ def parse_annotations(data_path: Path) -> pd.DataFrame:
                 for col, position in zip(df_positions.columns, positions):
                     df_data[col].append(position)
                 for property_key, property_value in properties.items():
-                    df_data[property_key].append(property_value)
+                    if df_properties[property_key].dtype == "category":
+                        property_category = df_properties[property_key].cat.categories[
+                            property_value
+                        ]
+                        df_data[property_key].append(property_category)
+                    else:
+                        df_data[property_key].append(property_value)
                 df_data["__spatial_index__"].append(key)
                 df_data["__chunk_key__"].append(chunk_key)
 
-    return pd.DataFrame(data=df_data).set_index("index")
+    # set the correct dtypes
+    # TODO: this could be done directly (earlier) when creating the df_data dict
+    df_data = {k: pd.Series(v, dtype=df_merged[k].dtype) for k, v in df_data.items()}
+
+    df = pd.DataFrame(data=df_data).set_index("index")
+    df.index.name = None
+    return df

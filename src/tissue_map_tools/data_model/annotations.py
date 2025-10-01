@@ -284,19 +284,33 @@ def encode_positions_and_properties_via_single_annotation(
         value = properties_values[prop.id]
         if prop.type in ("uint32", "int32", "float32"):
             fmt = {"uint32": "<I", "int32": "<i", "float32": "<f"}[prop.type]
-            buf += struct.pack(fmt, value)
+            packed = struct.pack(fmt, value)
+            # safety check
         elif prop.type in ("uint16", "int16"):
             fmt = {"uint16": "<H", "int16": "<h"}[prop.type]
-            buf += struct.pack(fmt, value)
+            packed = struct.pack(fmt, value)
         elif prop.type in ("uint8", "int8"):
             fmt = {"uint8": "<B", "int8": "<b"}[prop.type]
-            buf += struct.pack(fmt, value)
+            packed = struct.pack(fmt, value)
         elif prop.type == "rgb":
-            buf += struct.pack("<3B", *value)
+            packed = struct.pack("<3B", *value)
         elif prop.type == "rgba":
-            buf += struct.pack("<4B", *value)
+            packed = struct.pack("<4B", *value)
         else:
             raise ValueError(f"Unknown property type: {prop.type}")
+        buf += packed
+        # safety check
+        if prop.type in ["rgb", "rgba"]:
+            unpacked = struct.unpack_from("<" + str(len(value)) + "B", packed)
+            value_check = value
+        else:
+            unpacked = struct.unpack_from(fmt, packed)
+            value_check = (value,)
+        if not np.allclose(unpacked, value_check):
+            raise ValueError(
+                f"Value mismatch for property '{prop.id}': original {value}, unpacked "
+                f"{unpacked}. Please report this bug."
+            )
 
     # 3. Pad to 4-byte boundary
     pad = (4 - (len(buf) % 4)) % 4
