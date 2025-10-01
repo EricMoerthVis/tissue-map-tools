@@ -1,5 +1,6 @@
 test-tmt
 dist
+data/*
 .venv
 uv.lock
 .idea
