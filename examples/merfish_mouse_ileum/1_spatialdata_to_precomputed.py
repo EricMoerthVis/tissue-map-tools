@@ -6,12 +6,7 @@ import napari_spatialdata.constants.config
 import spatialdata as sd
 from pathlib import Path
 from numpy.random import default_rng
-import shutil
-import time
 
-from tissue_map_tools.converters import (
-    from_spatialdata_points_to_precomputed_points,
-)
 from tissue_map_tools.igneous_converters import (  # noqa: F401
     from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes,
 )
@@ -33,33 +28,35 @@ sdata = sd.read_zarr(f)
 
 ##
 # subset the data
-sdata_small = sd.bounding_box_query(
-    sdata,
-    axes=("x", "y", "z"),
-    min_coordinate=[4000, 0, -10],
-    max_coordinate=[5000, 1500, 200],
-    target_coordinate_system="global",
-)
+# sdata_small = sd.bounding_box_query(
+#     sdata,
+#     axes=("x", "y", "z"),
+#     min_coordinate=[4000, 0, -10],
+#     max_coordinate=[5000, 1500, 200],
+#     target_coordinate_system="global",
+# )
+#
+# transformation = sd.transformations.get_transformation(sdata_small["dapi"])
+# translation_vector = transformation.to_affine_matrix(
+#     input_axes=("x", "y", "z"), output_axes=("x", "y", "z")
+# )[:3, 3]
+# translation = sd.transformations.Translation(translation_vector, axes=("x", "y", "z"))
+# for _, element_name, _ in sdata_small.gen_spatial_elements():
+#     old_transformation = sd.transformations.get_transformation(
+#         sdata_small[element_name]
+#     )
+#     sequence = sd.transformations.Sequence([old_transformation, translation.inverse()])
+#     sd.transformations.set_transformation(
+#         sdata_small[element_name],
+#         transformation=sequence,
+#         to_coordinate_system="global",
+#     )
+#     transformed = sd.transform(sdata_small[element_name], to_coordinate_system="global")
+#     sdata_small[element_name] = transformed
+#
+# sdata = sdata_small
 
-transformation = sd.transformations.get_transformation(sdata_small["dapi"])
-translation_vector = transformation.to_affine_matrix(
-    input_axes=("x", "y", "z"), output_axes=("x", "y", "z")
-)[:3, 3]
-translation = sd.transformations.Translation(translation_vector, axes=("x", "y", "z"))
-for _, element_name, _ in sdata_small.gen_spatial_elements():
-    old_transformation = sd.transformations.get_transformation(
-        sdata_small[element_name]
-    )
-    sequence = sd.transformations.Sequence([old_transformation, translation.inverse()])
-    sd.transformations.set_transformation(
-        sdata_small[element_name],
-        transformation=sequence,
-        to_coordinate_system="global",
-    )
-    transformed = sd.transform(sdata_small[element_name], to_coordinate_system="global")
-    sdata_small[element_name] = transformed
-
-sdata = sdata_small
+##
 #
 # cells_baysor_cropped = sd.bounding_box_query(
 #     sdata["cells_baysor"],
@@ -71,10 +68,12 @@ sdata = sdata_small
 # sdata["cells_baysor"] = cells_baysor_cropped
 
 ##
-# from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
-#     raster=sdata["dapi_labels"],
-#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-# )
+from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
+    raster=sdata["dapi_labels"],
+    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+)
+
+##
 # from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
 #     raster=sdata["membrane_labels"],
 #     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
@@ -96,22 +95,21 @@ subset_df = subset_df[
         "y",
         "z",
         "gene",
-        # "area",
+        "area",
+        "mol_id",
+        "x_raw",
+        "y_raw",
+        "z_raw",
+        "brightness",
+        "total_magnitude",
+        "compartment",
+        "nuclei_probs",
+        "assignment_confidence",
         #
-        # "mol_id",
-        # "x_raw",
-        # "y_raw",
-        # "z_raw",
-        # "brightness",
-        # "total_magnitude",
-        # "compartment",
-        # "nuclei_probs",
-        # "assignment_confidence",
-        # #
-        # "cell",
-        # "is_noise",  # TODO: bool not working at the moment
-        # # "ncv_color",  # TODO: represent as RGB
-        # "layer",
+        "cell",
+        "is_noise",  # TODO: bool not working at the moment
+        # "ncv_color",  # TODO: represent as RGB
+        "layer",
     ]
 ]
 sdata["molecule_baysor"] = sd.models.PointsModel.parse(
@@ -141,22 +139,22 @@ print(points.x.dtype)
 # print(points.gene.cat.categories)
 print(points.gene.cat.categories.get_loc(points.gene.iloc[0]))
 ##
-print("converting the points to the precomputed format")
-
-# TODO: there should be no need to add the subpath (we should be able to specify the
-#  parent cloud volume object
-# TODO: the info file in the parent volume should be updated to include the points
-# TODO: the view APIs show include the points
-
-start = time.time()
-path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor")
-if path.exists():
-    shutil.rmtree(path)
-from_spatialdata_points_to_precomputed_points(
-    sdata["molecule_baysor"],
-    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-    points_name="molecule_baysor",
-    limit=1000,
-    # limit=500,
-)
-print(f"conversion of points: {time.time() - start}")
+# print("converting the points to the precomputed format")
+#
+# # TODO: there should be no need to add the subpath (we should be able to specify the
+# #  parent cloud volume object
+# # TODO: the info file in the parent volume should be updated to include the points
+# # TODO: the view APIs show include the points
+#
+# start = time.time()
+# path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor")
+# if path.exists():
+#     shutil.rmtree(path)
+# from_spatialdata_points_to_precomputed_points(
+#     sdata["molecule_baysor"],
+#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+#     points_name="molecule_baysor",
+#     limit=1000,
+#     # limit=500,
+# )
+# print(f"conversion of points: {time.time() - start}")

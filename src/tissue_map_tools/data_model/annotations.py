@@ -243,6 +243,24 @@ class AnnotationInfo(BaseModel):
         return self
 
 
+# from here https://github.com/google/neuroglancer/blob/249f866954c4069292c121eaa0592326b7277814/src/annotation/index.ts#L147
+TYPE_ALIGNMENT = {
+    "rgb": 1,
+    "rgba": 1,
+    "float32": 4,
+    "uint32": 4,
+    "int32": 4,
+    "uint16": 2,
+    "int16": 2,
+    "uint8": 1,
+    "int8": 1,
+}
+
+
+def sort_properties(properties: list[AnnotationProperty]) -> list[AnnotationProperty]:
+    return sorted(properties, key=lambda prop: TYPE_ALIGNMENT[prop.type], reverse=True)
+
+
 def encode_positions_and_properties_via_single_annotation(
     info: AnnotationInfo,
     positions_values: list[float],
@@ -280,7 +298,8 @@ def encode_positions_and_properties_via_single_annotation(
         raise ValueError(f"Unknown annotation_type: {info.annotation_type}")
 
     # 2. Encode properties in order
-    for prop in info.properties:
+    sorted_properties = sort_properties(info.properties)
+    for prop in sorted_properties:
         value = properties_values[prop.id]
         if prop.type in ("uint32", "int32", "float32"):
             fmt = {"uint32": "<I", "int32": "<i", "float32": "<f"}[prop.type]
@@ -357,7 +376,8 @@ def decode_positions_and_properties_via_single_annotation(
 
     # 2. Decode properties in order
     properties_values = {}
-    for prop in info.properties:
+    sorted_properties = sort_properties(info.properties)
+    for prop in sorted_properties:
         if prop.type == "uint32":
             (value,) = struct.unpack_from("<I", data, offset)
             offset += 4

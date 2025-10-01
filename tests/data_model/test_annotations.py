@@ -89,19 +89,19 @@ def example_annotations():
     return {
         "spatial0": {
             # single chunk covering the whole range
-            "1_1_1": [
+            "0_0_0": [
                 (
-                    1,
+                    100,
                     [11.0, 1.0, 0.0],
                     _props([255, 0, 0], 0.9, 0),
                 ),
                 (
-                    2,
+                    101,
                     [59.9, 49.9, 10.0],
                     _props([0, 255, 0], 0.8, 1),
                 ),
                 (
-                    3,
+                    102,
                     [109.9, 99.9, 29.9],
                     _props([0, 0, 255], 0.7, 2),
                 ),
@@ -109,56 +109,56 @@ def example_annotations():
         },
         "spatial1": {
             # left (x), bottom (y): x in [10,60), y in [0,50)
-            "1_1_1": [
+            "0_0_0": [
                 (
-                    4,
+                    103,
                     [20.0, 10.0, -5.0],
                     _props([255, 128, 0], 0.85, 1),
                 ),
                 (
-                    5,
+                    104,
                     [30.0, 40.0, 20.0],
                     _props([128, 0, 255], 0.65, 0),
                 ),
             ],
             # left (x), top (y): x in [10,60), y in [50,100)
-            "1_2_1": [
+            "0_1_0": [
                 (
-                    6,
+                    105,
                     [15.0, 60.0, 0.0],
                     _props([0, 200, 200], 0.95, 2),
                 ),
                 (
-                    7,
+                    106,
                     [45.0, 70.0, 10.0],
                     _props([200, 0, 200], 0.55, 0),
                 ),
                 (
-                    8,
+                    107,
                     [59.9, 99.0, 25.0],
                     _props([50, 100, 150], 0.75, 1),
                 ),
             ],
             # right (x), bottom (y): x in [60,110), y in [0,50)
-            "2_1_1": [
+            "1_0_0": [
                 (
-                    9,
+                    108,
                     [70.0, 10.0, -1.0],
                     _props([20, 220, 60], 0.6, 2),
                 ),
                 (
-                    10,
+                    109,
                     [80.0, 25.0, 5.0],
                     _props([220, 20, 60], 0.7, 1),
                 ),
                 (
-                    11,
+                    110,
                     [109.0, 49.9, 15.0],
                     _props([60, 60, 220], 0.8, 0),
                 ),
             ],
             # right (x), top (y): empty
-            "2_2_1": [],
+            "1_1_0": [],
         },
     }
 
@@ -741,10 +741,18 @@ def test_write_read_spatial_index_from_pandas(tmp_path: Path) -> None:
     assert positions.shape == (11, 3)
     df = pd.DataFrame(positions, columns=["x", "y", "z"])
     # TODO: add one annotation for each supported dtype
-    df["value"] = np.arange(11, dtype="int32")
+    base_vals = np.arange(11)
     df["categorical"] = pd.Categorical(
         ["A", "B", "C", "A", "B", "C", "A", "B", "C", "A", "B"]
     )
+    # df["float32"] = base_vals.astype("float32")
+    # df["uint8"] = base_vals.astype("uint8")
+    # df["uint16"] = base_vals.astype("uint16")
+    # df["uint32"] = base_vals.astype("uint32")
+    df["int8"] = base_vals.astype("int8")
+    # df["int16"] = base_vals.astype("int16")
+    df["int32"] = base_vals.astype("int32")
+    # TODO: add RGB and RGBA
 
     ##
     from_spatialdata_points_to_precomputed_points(
@@ -756,9 +764,18 @@ def test_write_read_spatial_index_from_pandas(tmp_path: Path) -> None:
     )
     # now read the index back and try to see if the viz is correct
     df_parsed = parse_annotations(data_path=tmp_path)
-    df_parsed = df_parsed.sort_values(by=["value"]).drop(
+    df_parsed = df_parsed.sort_values(by=["int32"]).drop(
         ["__spatial_index__", "__chunk_key__"], axis=1
     )
     df.index = list(df.index)
     df.index = df.index.astype(np.uint64)
     pd.testing.assert_frame_equal(df, df_parsed)
+    df_parsed
+    #
+    # from tissue_map_tools.view import (
+    #     view_precomputed_in_neuroglancer,
+    # )
+    #
+    # viewer = view_precomputed_in_neuroglancer(
+    #     data_path=str(tmp_path),
+    # )
