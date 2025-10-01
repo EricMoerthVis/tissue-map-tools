@@ -40,7 +40,7 @@ extra = [
 ]
 examples = [
     "dirhash>=0.5.0",
-    "neuroglancer>=2.40.1",
+    "neuroglancer>=2.41.2",
     "napari-spatialdata>=0.5.5",
     "spatialdata>=0.4.0",
     "napari>=0.6.1",
@@ -51,9 +51,12 @@ examples = [
 dev = [
     "pre-commit>=4.2.0",
 ]
+test = [
+    "pytest"
+]
 
 [tool.uv]
-default-groups = ["examples", "dev"]
+default-groups = ["examples", "dev", "test"]
 
 [build-system]
 requires = ["hatchling"]
