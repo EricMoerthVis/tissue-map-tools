@@ -7,7 +7,7 @@ import neuroglancer
 from cloudvolume import CloudVolume
 from numpy.random import default_rng
 import numpy as np
-from tissue_map_tools.shard_util import get_ids_from_shard_files
+from tissue_map_tools.shard_util import get_ids_from_mesh_files
 from tissue_map_tools.data_model.annotations import find_annotations_from_cloud_volume
 from tissue_map_tools.data_model.annotations_utils import parse_annotations
 
@@ -54,7 +54,7 @@ def view_precomputed_in_neuroglancer(
                 mesh_subpath = cv.meta.info["mesh"]
                 mesh_layer_name = mesh_layer_name if mesh_layer_name else mesh_subpath
                 if mesh_ids is None:
-                    mesh_ids = get_ids_from_shard_files(
+                    mesh_ids = get_ids_from_mesh_files(
                         root_data_path=data_path,
                         data_path=Path(data_path) / mesh_subpath,
                     )
@@ -126,7 +126,7 @@ def view_precomputed_in_napari(
     if show_meshes:
         mesh_layer_name = mesh_layer_name if mesh_layer_name else cv.info["mesh"]
         if mesh_ids is None:
-            mesh_ids = get_ids_from_shard_files(
+            mesh_ids = get_ids_from_mesh_files(
                 root_data_path=data_path, data_path=Path(data_path) / mesh_layer_name
             )
 
