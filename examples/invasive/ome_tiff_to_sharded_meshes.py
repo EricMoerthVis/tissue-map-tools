@@ -25,132 +25,51 @@ from tissue_map_tools.view import (  # noqa: F401
 f = Path(__file__).parent.parent.parent / "data" / "invasive_mask.ome.tiff"
 
 ##
-# if not f.exists():
-#     raise FileNotFoundError(
-#         f"File {f} does not exist. Please use symlinks to make the data available."
-#     )
-#
-# ##
-# data = imread(f)
-# data = data.rechunk((256, 256, 256))
-#
-# xml = tifffile.TiffFile(f).ome_metadata
-# xml_dict = xmltodict.parse(xml)
-# sizes = {
-#     ax: int(xml_dict["OME"]["Image"]["Pixels"][f"@Size{ax.upper()}"]) for ax in "xyz"
-# }
-#
-# # quick hack: to find the dimension of the data we use the fact that the sizes are unique
-# assert len(set(sizes.values())) == 3
-# dims = []
-# for size in data.shape:
-#     for ax, ax_size in sizes.items():
-#         if size == ax_size:
-#             dims.append(ax)
-#             break
-#
-# labels = Labels3DModel.parse(data, dims=dims)
-# sdata = SpatialData.init_from_elements({"labels": labels})
-# sdata.write("/Users/macbook/Desktop/invasive.zarr", overwrite=True)
+if not f.exists():
+    raise FileNotFoundError(
+        f"File {f} does not exist. Please use symlinks to make the data available."
+    )
+
+##
+data = imread(f)
+data = data.rechunk((256, 256, 256))
+
+xml = tifffile.TiffFile(f).ome_metadata
+xml_dict = xmltodict.parse(xml)
+sizes = {
+    ax: int(xml_dict["OME"]["Image"]["Pixels"][f"@Size{ax.upper()}"]) for ax in "xyz"
+}
+
+# quick hack: to find the dimension of the data we use the fact that the sizes are unique
+assert len(set(sizes.values())) == 3
+dims = []
+for size in data.shape:
+    for ax, ax_size in sizes.items():
+        if size == ax_size:
+            dims.append(ax)
+            break
+
+labels = Labels3DModel.parse(data, dims=dims)
+sdata = SpatialData.init_from_elements({"labels": labels})
+sdata.write("/Users/macbook/Desktop/invasive.zarr", overwrite=True)
 
 ##
 # read again to take advantage of the Zarr chunking
 sdata = SpatialData.read("/Users/macbook/Desktop/invasive.zarr")
 
-
 ##
-# DEFAULT_NLOD = 4
-# mesh_name: str | None = None
-# nlod: int = DEFAULT_NLOD
-# parallel: int | bool = True
-# # sharded format currently not working: https://github.com/seung-lab/igneous/issues/209
-# sharded: bool = True
-# data_path = "/Users/macbook/Desktop/invasive_precomputed"
-#
-# task_queue = LocalTaskQueue(parallel=parallel)
-#
-# forge_task = create_meshing_tasks(
-#     layer_path=data_path,
-#     mip=0,
-#     mesh_dir=mesh_name,
-#     sharded=sharded,
-#     object_ids=[5],
-# )
-# task_queue.insert(forge_task)
-# task_queue.execute()
-#
-# if sharded:
-#     merge_task = create_sharded_multires_mesh_tasks(
-#         cloudpath=data_path,
-#         num_lod=nlod,
-#         min_chunk_size=(16, 16, 16),
-#     )
-# else:
-#     merge_task = create_unsharded_multires_mesh_tasks(
-#         cloudpath=data_path,
-#         num_lod=nlod,
-#     )
-# task_queue.insert(merge_task)
-# task_queue.execute()
-
-##
-# from_precomputed_raster_to_precomputed_meshes(
-#     data_path="/Users/macbook/Desktop/invasive_precomputed",
-#     nlod=4,
-#     min_chunk_size=(16, 16, 16),
-#     shape=(32, 32, 32),
-#     object_ids=list(range(1000)),
-# )
-
-##
-# from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
-#     raster=sdata["labels"],
-#     precomputed_path="/Users/macbook/Desktop/invasive_precomputed",
-#     units_factor=10,
-#     object_ids=list(range(1000)),
-#     shape=(32, 32, 32),
-#     nlod=4,
-#     min_chunk_size=(16, 16, 16),
-# )
-
-##
-# from_spatialdata_raster_to_precomputed_raster(
-#     raster=sdata["labels"],
-#     precomputed_path="/Users/macbook/Desktop/invasive_precomputed",
-#     units_factor=100,
-# )
-
-##
-# from_precomputed_raster_to_multiscale_precomputed_raster(
-#     data_path="/Users/macbook/Desktop/invasive_precomputed",
-#     sharded=True,
-# )
-
-##
-# from_precomputed_raster_modify_scales_and_sharding(
-#     data_path="/Users/macbook/Desktop/invasive_precomputed",
-#     sharded=False,
-#     multiscale=False,
-# )
+from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
+    raster=sdata["labels"],
+    precomputed_path="/Users/macbook/Desktop/invasive_precomputed",
+    units_factor=10,
+    # object_ids=list(range(1000)),
+    shape=(128, 128, 128),
+    nlod=3,
+    min_chunk_size=(32, 32, 32),
+)
 
 ##
 viewer = view_precomputed_in_neuroglancer(
     data_path="/Users/macbook/Desktop/invasive_precomputed",
     # mesh_ids=[5]
 )
-# viewer = view_precomputed_in_neuroglancer(
-#     data_path="/Users/macbook/Desktop/invasive_precomputed_copy",
-#     # mesh_ids=[5]
-# )
-# viewer = view_precomputed_in_neuroglancer(
-#     data_path="/Users/macbook/Desktop/invasive_precomputed/my_image_sharded",
-#     # mesh_ids=[5]
-# )
-# viewer = view_precomputed_in_neuroglancer(
-#     data_path="/Users/macbook/Desktop/invasive_precomputed/my_image_downsample",
-#     # mesh_ids=[5]
-# )
-# viewer = view_precomputed_in_neuroglancer(
-#     data_path="/Users/macbook/Desktop/invasive_precomputed/my_image_sharded",
-#     # mesh_ids=[5]
-# )

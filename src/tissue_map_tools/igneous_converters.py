@@ -220,6 +220,8 @@ def from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
         The IDs of the meshes to create. If None, meshes will be created for all.
     shape
         The shape of the chunk for the finest meshes level (=best level of details).
+        Chunks should not be too small, otherwise the visualization will be less
+        performant.
     nlod
         The number of levels of details for the meshes. This number is ignored if the
         `min_chunk_size` is too large compared to the size of individual meshes. See the
