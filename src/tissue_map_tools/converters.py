@@ -31,13 +31,14 @@ RNG = default_rng(42)
 
 # behavior around this should be improved and made consistent across all the functions
 # that convert to precomputed format
-FACTOR = 1000
+DEFAULT_UNITS_FACTOR = 1000
 
 
 def from_ome_zarr_04_raster_to_precomputed_raster(
     ome_zarr_path: str | Path,
     precomputed_path: str | Path,
     is_labels: bool | None = None,
+    units_factor: int = DEFAULT_UNITS_FACTOR,
 ) -> None:
     """
     Convert OME-Zarr v0.4 to Precomputed format.
@@ -52,6 +53,8 @@ def from_ome_zarr_04_raster_to_precomputed_raster(
         If True, the data is treated as labels (i.e., the precomputed format will not have
         the "c" axis, which is used for channels). If False, the data is treated as an image.
         If None, the function will try to infer it from the data.
+    units_factor
+        TODO: document this parameter.
     """
     # read raster data
     ome_zarr_path = Path(ome_zarr_path)
@@ -154,7 +157,7 @@ def from_ome_zarr_04_raster_to_precomputed_raster(
     transposed = _transpose_dask_data_for_cloudvolume(dask_data_scale0, axes=axes)
 
     pixel_sizes = {
-        axis: round(FACTOR * scale_factors[axis]) for axis in ["x", "y", "z"]
+        axis: round(units_factor * scale_factors[axis]) for axis in ["x", "y", "z"]
     }
 
     layer_type = "segmentation" if is_labels else "image"
@@ -188,7 +191,21 @@ def _transpose_dask_data_for_cloudvolume(
 def from_spatialdata_raster_to_precomputed_raster(
     raster: DataArray | DataTree,
     precomputed_path: str | Path,
+    units_factor: int = DEFAULT_UNITS_FACTOR,
 ) -> None:
+    """
+
+    Parameters
+    ----------
+    raster
+    precomputed_path
+    units_factor
+        TODO: document this parameter.
+
+    Returns
+    -------
+
+    """
     import spatialdata as sd
 
     model = sd.models.get_model(raster)
@@ -217,7 +234,7 @@ def from_spatialdata_raster_to_precomputed_raster(
     pixel_sizes = dict(zip(["x", "y", "z"], np.diag(affine[:3, :3])))
     # the pixel sizes should be in nanometers. This code works for microns and will need
     # to be adapted for general units
-    pixel_sizes = {k: round(FACTOR * v) for k, v in pixel_sizes.items()}
+    pixel_sizes = {k: round(units_factor * v) for k, v in pixel_sizes.items()}
     # voxel offset doesn't seem to work. We need to discuss this in a bug to cloudvolume
     # we want to be able to translate the volume (after a cropping in SpatialData), using
     # the voxel_offset parameter
