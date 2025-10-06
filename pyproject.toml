@@ -28,7 +28,7 @@ dependencies = [
     "trame-jupyter-extension>=2.1.4",
     "watchfiles>=1.0.5",
     "zarr>=2.18.7",
-    "cloud-volume>=12.6.2",
+    "cloud-volume>=12.6.3",
     "fastremap>=1.17.7",
     "xarray>=2024.9.0",
     "vedo>=2025.5.4",
@@ -37,7 +37,8 @@ dependencies = [
 
 [dependency-groups]
 extra = [
-    "igneous-pipeline>=4.30.0",
+    # https://github.com/seung-lab/igneous/issues/211#issuecomment-3366714308
+    "igneous-pipeline>=4.32.0,!=4.33.0,!=4.34.0",
     "task-queue>=2.14.2",
 ]
 examples = [

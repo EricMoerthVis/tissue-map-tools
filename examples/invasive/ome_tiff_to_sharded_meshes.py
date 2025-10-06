@@ -22,9 +22,8 @@ from tissue_map_tools.view import (  # noqa: F401
     view_precomputed_in_neuroglancer,
 )
 
-f = Path(__file__).parent.parent.parent / "data" / "invasive_mask.ome.tiff"
-
 ##
+f = Path(__file__).parent.parent.parent / "data" / "invasive_mask.ome.tiff"
 if not f.exists():
     raise FileNotFoundError(
         f"File {f} does not exist. Please use symlinks to make the data available."
@@ -61,7 +60,7 @@ sdata = SpatialData.read("/Users/macbook/Desktop/invasive.zarr")
 from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
     raster=sdata["labels"],
     precomputed_path="/Users/macbook/Desktop/invasive_precomputed",
-    units_factor=10,
+    units_factor=1000,
     # object_ids=list(range(1000)),
     shape=(128, 128, 128),
     nlod=3,
@@ -70,6 +69,5 @@ from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
 
 ##
 viewer = view_precomputed_in_neuroglancer(
-    data_path="/Users/macbook/Desktop/invasive_precomputed",
-    # mesh_ids=[5]
+    data_path="/Users/macbook/Desktop/invasive_precomputed", mesh_ids=[5]
 )
