@@ -13,16 +13,24 @@ from tissue_map_tools.igneous_converters import (  # noqa: F401
 from tissue_map_tools.data_model.annotations_utils import (
     make_dtypes_compatible_with_precomputed_annotations,
 )
-
+import time  # noqa: F401
+import shutil  # noqa: F401
+from tissue_map_tools.converters import (  # noqa: F401
+    from_spatialdata_points_to_precomputed_points,
+)
 
 RNG = default_rng(42)
 
 napari_spatialdata.constants.config.PROJECT_3D_POINTS_TO_2D = False
 napari_spatialdata.constants.config.PROJECT_2_5D_SHAPES_TO_2D = False
 
+out_path = Path(__file__).parent.parent.parent / "out"
+sdata_zarr_path = out_path / "merfish_mouse_ileum.sdata.zarr"
+precomputed_path = out_path / "merfish_mouse_ileum_precomputed"
+
 ##
 # load the data
-f = Path("/Users/macbook/Desktop/moffitt.zarr")
+f = Path(sdata_zarr_path)
 sdata = sd.read_zarr(f)
 # print(sd.get_extent(sdata["molecules"]))
 
@@ -70,13 +78,13 @@ sdata = sd.read_zarr(f)
 ##
 from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
     raster=sdata["dapi_labels"],
-    precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+    precomputed_path=str(precomputed_path),
 )
 
 ##
 # from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
 #     raster=sdata["membrane_labels"],
-#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
+#     precomputed_path=str(precomputed_path),
 # )
 
 
@@ -139,22 +147,22 @@ print(points.x.dtype)
 # print(points.gene.cat.categories)
 print(points.gene.cat.categories.get_loc(points.gene.iloc[0]))
 ##
-# print("converting the points to the precomputed format")
-#
-# # TODO: there should be no need to add the subpath (we should be able to specify the
-# #  parent cloud volume object
-# # TODO: the info file in the parent volume should be updated to include the points
-# # TODO: the view APIs show include the points
-#
-# start = time.time()
-# path = Path("/Users/macbook/Desktop/moffitt_precomputed/molecule_baysor")
-# if path.exists():
-#     shutil.rmtree(path)
-# from_spatialdata_points_to_precomputed_points(
-#     sdata["molecule_baysor"],
-#     precomputed_path="/Users/macbook/Desktop/moffitt_precomputed",
-#     points_name="molecule_baysor",
-#     limit=1000,
-#     # limit=500,
-# )
-# print(f"conversion of points: {time.time() - start}")
+print("converting the points to the precomputed format")
+
+# TODO: there should be no need to add the subpath (we should be able to specify the
+#  parent cloud volume object
+# TODO: the info file in the parent volume should be updated to include the points
+# TODO: the view APIs show include the points
+
+start = time.time()
+path = precomputed_path / "molecule_baysor"
+if path.exists():
+    shutil.rmtree(path)
+from_spatialdata_points_to_precomputed_points(
+    sdata["molecule_baysor"],
+    precomputed_path=precomputed_path,
+    points_name="molecule_baysor",
+    limit=1000,
+    # limit=500,
+)
+print(f"conversion of points: {time.time() - start}")

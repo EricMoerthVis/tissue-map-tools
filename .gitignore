@@ -10,4 +10,3 @@ out/*
 sandbox/*
 __pycache__/
 *.pyc
-__pycache__/

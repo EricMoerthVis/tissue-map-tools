@@ -252,6 +252,9 @@ def from_spatialdata_raster_to_sharded_precomputed_raster_and_meshes(
     "Settings icon > Render > Resolution (mesh)". Please see the explanation above for
     `nlod`, `shape`, and `min_chunk_size` for controlling the level-of-details.
     """
+    # TODO: support datatree
+    if isinstance(raster, DataTree):
+        raster = raster["scale0"]["image"]
     from_spatialdata_raster_to_precomputed_raster(
         raster=raster,
         precomputed_path=precomputed_path,

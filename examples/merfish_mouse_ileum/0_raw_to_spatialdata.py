@@ -19,7 +19,7 @@ from geopandas import sjoin
 from geopandas import GeoDataFrame
 
 # download the data: https://datadryad.org/dataset/doi:10.5061/dryad.jm63xsjb2
-out_path = Path(__file__).parent.parent / "out"
+out_path = Path(__file__).parent.parent.parent / "out"
 download_path = out_path / "data_release_baysor_merfish_gut.zip"
 unzipped_path = out_path / "data_release_baysor_merfish_gut"
 
@@ -42,19 +42,26 @@ if not unzipped_path.exists():
     )
 
 # parse raw images
-data = imread(unzipped_path / "raw_data" / "dapi_stack.tif")
-data = da.reshape(data, (1, *data.shape))
-dapi_stack = sd.models.Image3DModel.parse(data)
 
-data = imread(unzipped_path / "raw_data" / "membrane_stack.tif")
-data = da.reshape(data, (1, *data.shape))
-membrane_stack = sd.models.Image3DModel.parse(data)
+dapi_data = imread(unzipped_path / "raw_data" / "dapi_stack.tif")
+dapi_data = da.reshape(dapi_data, (1, *dapi_data.shape))
+
+membrane_data = imread(unzipped_path / "raw_data" / "membrane_stack.tif")
+membrane_data = da.reshape(membrane_data, (1, *membrane_data.shape))
+
+# the data is in the format (channel, z, y, x)
+data = da.concatenate([dapi_data, membrane_data], axis=0)
+img_stack = sd.models.Image3DModel.parse(
+    data, scale_factors=[2, 2], c_coords=["DAPI", "Membrane"]
+)
 
 # parse transcripts locations
 points_path = unzipped_path / "raw_data" / "molecules.csv"
 df = pd.read_csv(points_path)
 molecules = sd.models.PointsModel.parse(
-    df, coordinates={"x": "x_pixel", "y": "y_pixel", "z": "z_pixel"}
+    df,
+    coordinates={"x": "x_pixel", "y": "y_pixel", "z": "z_pixel"},
+    feature_key="gene",
 )
 
 
@@ -104,20 +111,13 @@ affine_correct_z_pixel_raster = sd.transformations.Affine(
 # um_to_pixel = pixel_to_um.inverse()
 
 sd.transformations.set_transformation(
-    dapi_stack,
+    img_stack,
     transformation=affine_correct_z_pixel_raster,
     to_coordinate_system="global",
 )
-sd.transformations.set_transformation(
-    membrane_stack,
-    transformation=affine_correct_z_pixel_raster,
-    to_coordinate_system="global",
-)
-
 sdata = sd.SpatialData.init_from_elements(
     {
-        "dapi": dapi_stack,
-        "membrane": membrane_stack,
+        "stains": img_stack,
         "molecules": molecules,
     }
 )
@@ -160,14 +160,18 @@ data = imread(
     unzipped_path / "data_analysis/cellpose/cell_boundaries/results/cellpose_dapi.tif"
 )
 dapi_labels = sd.models.Labels3DModel.parse(
-    data, transformations={"global": affine_correct_z_pixel_raster}
+    data,
+    transformations={"global": affine_correct_z_pixel_raster},
+    scale_factors=[2, 2],
 )
 data = imread(
     unzipped_path
     / "data_analysis/cellpose/cell_boundaries/results/cellpose_membrane.tif"
 )
 membrane_labels = sd.models.Labels3DModel.parse(
-    data, transformations={"global": affine_correct_z_pixel_raster}
+    data,
+    transformations={"global": affine_correct_z_pixel_raster},
+    scale_factors=[2, 2],
 )
 # problem in the data: the same cell across dapi_labels and membrane_labels have
 # different index value
@@ -232,7 +236,7 @@ assert np.array_equal(molecules["x"].compute(), df_segmentation["x"])
 assert np.array_equal(molecules["y"].compute(), df_segmentation["y"])
 assert np.allclose(molecules["z"].compute(), df_segmentation["z"])
 
-points = sd.models.PointsModel.parse(df_segmentation)
+points = sd.models.PointsModel.parse(df_segmentation, feature_key="gene")
 points["cell"] = points["cell"].round(0).astype(int)
 
 sdata["gene_expression_baysor"] = adata
@@ -485,6 +489,8 @@ processed = process_pseudo3D_shapes(
 # sdata["cells_baysor"] = gdf_all_layers
 sdata["cells_baysor"] = processed
 
-sdata.write("/Users/macbook/Desktop/moffitt.zarr", overwrite=True)
+sdata.write(out_path / "merfish_mouse_ileum.sdata.zarr", overwrite=True)
+
+
 # ##
 # Interactive(sdata)
