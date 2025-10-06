@@ -51,13 +51,16 @@ membrane_data = da.reshape(membrane_data, (1, *membrane_data.shape))
 
 # the data is in the format (channel, z, y, x)
 data = da.concatenate([dapi_data, membrane_data], axis=0)
-img_stack = sd.models.Image3DModel.parse(data, scale_factors=[2, 2], c_coords=["DAPI", "Membrane"])
+img_stack = sd.models.Image3DModel.parse(
+    data, scale_factors=[2, 2], c_coords=["DAPI", "Membrane"]
+)
 
 # parse transcripts locations
 points_path = unzipped_path / "raw_data" / "molecules.csv"
 df = pd.read_csv(points_path)
 molecules = sd.models.PointsModel.parse(
-    df, coordinates={"x": "x_pixel", "y": "y_pixel", "z": "z_pixel"},
+    df,
+    coordinates={"x": "x_pixel", "y": "y_pixel", "z": "z_pixel"},
     feature_key="gene",
 )
 
@@ -157,16 +160,18 @@ data = imread(
     unzipped_path / "data_analysis/cellpose/cell_boundaries/results/cellpose_dapi.tif"
 )
 dapi_labels = sd.models.Labels3DModel.parse(
-    data, transformations={"global": affine_correct_z_pixel_raster},
-    scale_factors=[2, 2]
+    data,
+    transformations={"global": affine_correct_z_pixel_raster},
+    scale_factors=[2, 2],
 )
 data = imread(
     unzipped_path
     / "data_analysis/cellpose/cell_boundaries/results/cellpose_membrane.tif"
 )
 membrane_labels = sd.models.Labels3DModel.parse(
-    data, transformations={"global": affine_correct_z_pixel_raster},
-    scale_factors=[2, 2]
+    data,
+    transformations={"global": affine_correct_z_pixel_raster},
+    scale_factors=[2, 2],
 )
 # problem in the data: the same cell across dapi_labels and membrane_labels have
 # different index value

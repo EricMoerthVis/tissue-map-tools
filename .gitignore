@@ -1,5 +1,6 @@
 test-tmt
 dist
+data/*
 .venv
 uv.lock
 .idea
@@ -8,3 +9,4 @@ out/*
 .DS_Store
 sandbox/*
 __pycache__/
+*.pyc

@@ -1,16 +1,15 @@
 import webbrowser
 
+from pathlib import Path
 import warnings
 import napari
 import neuroglancer
 from cloudvolume import CloudVolume
-from cloudvolume.datasource.precomputed.sharding import (
-    ShardReader,
-    ShardingSpecification,
-)
-from pathlib import Path
 from numpy.random import default_rng
 import numpy as np
+from tissue_map_tools.shard_util import get_ids_from_mesh_files
+from tissue_map_tools.data_model.annotations import find_annotations_from_cloud_volume
+from tissue_map_tools.data_model.annotations_utils import parse_annotations
 
 RNG = default_rng(42)
 
@@ -21,6 +20,7 @@ def view_precomputed_in_neuroglancer(
     mesh_layer_name: str | None = None,
     mesh_ids: list[int] | None = None,
     show_meshes: bool = True,
+    show_annotations: bool = True,
     port: int = 10001,
     viewer: neuroglancer.Viewer | None = None,
     open_browser: bool = True,
@@ -37,7 +37,6 @@ def view_precomputed_in_neuroglancer(
     if viewer is None:
         viewer = neuroglancer.Viewer()
     url = f"precomputed://http://localhost:{port}"
-    cv
     with viewer.txn() as s:
         if data_type == "image":
             s.layers[layer_name] = neuroglancer.ImageLayer(
@@ -55,27 +54,20 @@ def view_precomputed_in_neuroglancer(
                 mesh_subpath = cv.meta.info["mesh"]
                 mesh_layer_name = mesh_layer_name if mesh_layer_name else mesh_subpath
                 if mesh_ids is None:
-                    mesh_path = Path(data_path) / mesh_layer_name
-                    meta = cv.mesh.meta
-                    cache = cv.mesh.cache
-                    data = cv.mesh.meta.info["sharding"]
-                    data["type"] = data["@type"]
-                    del data["@type"]
-                    sharding_specification = ShardingSpecification(**data)
-                    shard_reader = ShardReader(
-                        meta=meta, cache=cache, spec=sharding_specification
+                    mesh_ids = get_ids_from_mesh_files(
+                        root_data_path=data_path,
+                        data_path=Path(data_path) / mesh_subpath,
                     )
-                    # list all shard files
-                    shard_files = [f for f in mesh_path.glob("*.shard")]
-                    mesh_ids = []
-                    for shard_file in shard_files:
-                        ids = shard_reader.list_labels(shard_file)
-                        ids = [int(id) for id in ids]
-                        mesh_ids.extend(ids)
-
                 s.layers[mesh_layer_name] = neuroglancer.SegmentationLayer(
                     source=url + f"/{mesh_subpath}",
                     segments=mesh_ids,
+                )
+
+        if show_annotations:
+            annotations_names = find_annotations_from_cloud_volume(cv)
+            for annotation_name in annotations_names:
+                s.layers[annotation_name] = neuroglancer.AnnotationLayer(
+                    source=url + f"/{annotation_name}",
                 )
 
     if open_browser:
@@ -93,6 +85,7 @@ def view_precomputed_in_napari(
     mesh_ids: list[int] | None = None,
     show_raster: bool = False,
     show_meshes: bool = True,
+    show_points: bool = False,
     show_axes: bool = True,
     viewer: napari.Viewer | None = None,
     open: bool = True,
@@ -131,14 +124,15 @@ def view_precomputed_in_napari(
             raise ValueError(f"Unsupported data type: {type}")
 
     if show_meshes:
-        if mesh_ids is None:
-            raise NotImplementedError("mesh_ids must be provided for mesh layers.")
-
         mesh_layer_name = mesh_layer_name if mesh_layer_name else cv.info["mesh"]
+        if mesh_ids is None:
+            mesh_ids = get_ids_from_mesh_files(
+                root_data_path=data_path, data_path=Path(data_path) / mesh_layer_name
+            )
 
         meshes = cv.mesh.get(segids=mesh_ids[1:])
 
-        random_colors = RNG.random((len(unique_labels), 3))
+        random_colors = RNG.random((len(mesh_ids) + 1, 3))
 
         data_mins_xyz: list[float] = []
         data_maxs_xyz: list[float] = []
@@ -146,6 +140,12 @@ def view_precomputed_in_napari(
             if mesh_id == 0:
                 continue
             mesh = meshes[mesh_id]
+            if len(mesh) == 0:
+                warnings.warn(
+                    f"Mesh with ID {mesh_id} is empty. Skipping this mesh.",
+                    stacklevel=2,
+                )
+                continue
             vertices = mesh.vertices
             faces = mesh.faces
             vertex_colors = np.full((len(vertices), 3), random_colors[mesh_id])
@@ -166,7 +166,28 @@ def view_precomputed_in_napari(
                     data_mins_xyz = np.minimum(data_mins_xyz, mins).tolist()
                     data_maxs_xyz = np.maximum(data_maxs_xyz, maxs).tolist()
 
-    if show_axes:
+    if not show_meshes and show_axes:
+        warnings.warn(
+            "Currently show_axes is only supported when show_meshes is True. Setting "
+            "show_axes to False."
+        )
+        show_axes = False
+
+    if show_points:
+        df = parse_annotations(data_path=Path(data_path))
+        viewer.add_points(
+            df[["x", "y", "z"]].to_numpy(),
+            properties={
+                col: df[col].to_numpy()
+                for col in df.columns
+                if col not in ["x", "y", "z"]
+            },
+            name="points",
+            size=1000,
+            face_color="white",
+        )
+
+    if show_axes and data_maxs_xyz:
         if not show_meshes:
             warnings.warn(
                 "Currently show_axes is only supported when show_meshes is True."
@@ -208,7 +229,15 @@ if __name__ == "__main__":
     # fmt: on
     # viewer = view_precomputed_in_neuroglancer(
     #     data_path="../../out/20_1_gloms_precomputed",
+    #     # data_path="../../out/20_1_gloms_precomputed_multiscale",
     #     mesh_layer_name="mesh_mip_0_err_40",
+    #     mesh_ids=unique_labels,
+    # )
+    # viewer = view_precomputed_in_napari(
+    #     data_path="../../out/20_1_gloms_precomputed",
+    #     mesh_layer_name="glom",
+    #     # show_raster=True,
+    #     show_meshes=True,
     #     mesh_ids=unique_labels,
     # )
     # viewer = view_precomputed_in_napari(
@@ -216,13 +245,18 @@ if __name__ == "__main__":
     #     mesh_layer_name="glom",
     #     mesh_ids=unique_labels,
     # )
-    unique_labels = np.arange(5929).astype(int).tolist()
-    viewer = view_precomputed_in_neuroglancer(
-        data_path="/Users/macbook/Desktop/moffitt_precomputed",
-        mesh_ids=unique_labels,
-    )
+    # unique_labels = np.arange(5929).astype(int).tolist()
+    # viewer = view_precomputed_in_neuroglancer(
+    #     data_path="/Users/macbook/Desktop/moffitt_precomputed",
+    #     # mesh_ids=unique_labels,
+    # )
+
     # unique_labels = np.arange(100).astype(int).tolist()
     # viewer = view_precomputed_in_napari(
     #     data_path="/Users/macbook/Desktop/moffitt_precomputed",
     #     mesh_ids=unique_labels,
     # )
+    viewer = view_precomputed_in_neuroglancer(
+        data_path="/Users/macbook/Desktop/moffitt_precomputed",
+        # mesh_ids=unique_labels,
+    )
