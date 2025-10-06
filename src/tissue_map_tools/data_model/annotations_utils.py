@@ -66,7 +66,7 @@ def make_dtypes_compatible_with_precomputed_annotations(
     for column in df.select_dtypes(include=["bool"]).columns:
         df[column] = df[column].astype("int8")
 
-    converted_dtypes = {"float64", "int64", "object", "string", "bool"}
+    converted_dtypes = {"float64", "int64", "object", "string", "bool", "category"}
     if len(dtypes.difference(converted_dtypes)) > 0:
         warnings.warn(
             f"Some columns have dtypes {dtypes.difference(converted_dtypes)} that are not "

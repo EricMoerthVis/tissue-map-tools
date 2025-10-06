@@ -19,7 +19,7 @@ from geopandas import sjoin
 from geopandas import GeoDataFrame
 
 # download the data: https://datadryad.org/dataset/doi:10.5061/dryad.jm63xsjb2
-out_path = Path(__file__).parent.parent / "out"
+out_path = Path(__file__).parent.parent.parent / "out"
 download_path = out_path / "data_release_baysor_merfish_gut.zip"
 unzipped_path = out_path / "data_release_baysor_merfish_gut"
 

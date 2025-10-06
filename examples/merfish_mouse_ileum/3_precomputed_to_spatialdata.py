@@ -1,9 +1,11 @@
 from pathlib import Path
 from tissue_map_tools.data_model.annotations_utils import parse_annotations
 
+out_path = Path(__file__).parent.parent.parent / "out"
+precomputed_path = out_path / "merfish_mouse_ileum_precomputed"
 
 if __name__ == "__main__":
-    data_path = Path("/Users/macbook/Desktop/moffitt_precomputed")
+    data_path = precomputed_path
 
     # parse raster
 
