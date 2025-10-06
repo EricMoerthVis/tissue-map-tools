@@ -2,7 +2,7 @@ from cloudvolume import CloudVolume
 import xarray as xr
 from pathlib import Path
 from tqdm import tqdm
-from tissue_map_tools.shard_util import get_ids_from_shard_files
+from tissue_map_tools.shard_util import get_ids_from_mesh_files
 from xarray import DataTree
 
 
@@ -43,7 +43,7 @@ def print_cloudvolume_mesh(data: CloudVolume, unique_ids: list[int] | None = Non
         path = Path(data.meta.path.basepath) / data.meta.path.layer
         mesh = data.info["mesh"]
         data_path = str(path / mesh)
-        unique_ids = get_ids_from_shard_files(root_data_path=path, data_path=data_path)
+        unique_ids = get_ids_from_mesh_files(root_data_path=path, data_path=data_path)
 
     datatrees = []
     for segid in tqdm(unique_ids, desc="Downloading meshes"):

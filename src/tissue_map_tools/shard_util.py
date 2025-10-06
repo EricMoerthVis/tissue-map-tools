@@ -6,7 +6,7 @@ from cloudvolume import CloudVolume
 from pathlib import Path
 
 
-def get_ids_from_shard_files(
+def get_ids_from_mesh_files(
     data_path: str | Path,
     root_data_path: str | Path,
     shard_filename: str | None = None,
@@ -34,19 +34,23 @@ def get_ids_from_shard_files(
     cv = CloudVolume(cloudpath=str(root_data_path))
     meta = cv.mesh.meta
     cache = cv.mesh.cache
-    data = cv.mesh.meta.info["sharding"]
-    data["type"] = data["@type"]
-    del data["@type"]
-    sharding_specification = ShardingSpecification(**data)
-    shard_reader = ShardReader(meta=meta, cache=cache, spec=sharding_specification)
-    # list all shard files
-    if shard_filename is None:
-        shard_files = [str(f) for f in data_path.glob("*.shard")]
+    if "sharding" in cv.mesh.meta.info:
+        data = cv.mesh.meta.info["sharding"]
+        data["type"] = data["@type"]
+        del data["@type"]
+        sharding_specification = ShardingSpecification(**data)
+        shard_reader = ShardReader(meta=meta, cache=cache, spec=sharding_specification)
+        # list all shard files
+        if shard_filename is None:
+            shard_files = [str(f) for f in data_path.glob("*.shard")]
+        else:
+            shard_files = [str(Path(data_path) / shard_filename)]
+        mesh_ids = []
+        for shard_file in shard_files:
+            ids = shard_reader.list_labels(shard_file)
+            ids = [int(id) for id in ids]
+            mesh_ids.extend(ids)
     else:
-        shard_files = [str(Path(data_path) / shard_filename)]
-    mesh_ids = []
-    for shard_file in shard_files:
-        ids = shard_reader.list_labels(shard_file)
-        ids = [int(id) for id in ids]
-        mesh_ids.extend(ids)
+        index_files = [f.stem for f in data_path.glob("*.index")]
+        mesh_ids = [int(f) for f in index_files]
     return mesh_ids
