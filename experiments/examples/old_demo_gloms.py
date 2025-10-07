@@ -12,7 +12,7 @@ from cloudvolume.dask import to_cloudvolume
 from tissue_map_tools.view import view_precomputed_in_neuroglancer
 
 current_path = Path(__file__)
-assert str(current_path).endswith("gloms/old_demo_gloms.py")
+assert str(current_path).endswith("examples/old_demo_gloms.py")
 out_path = current_path.parent.parent.parent / "out"
 out_path.mkdir(parents=True, exist_ok=True)
 multires_path = out_path / "gloms_multires"
