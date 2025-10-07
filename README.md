@@ -22,15 +22,21 @@ pip install tissue-map-tools
 ## usage
 
 ```python
+import experiments.mesh_operations
+import experiments.subvolume_analysis
 import tissue_map_tools as tmt
 
-tmt.get_meshes("http://address_of_hosted_zarr_segmentation_mask", "/path_to_output/meshes",
-           "/path_to_output/meshes/stats_entity_name.csv", "entity_name", smoothing=5, test=False)
+experiments.mesher.get_meshes("http://address_of_hosted_zarr_segmentation_mask",
+                              "/path_to_output/meshes",
+                              "/path_to_output/meshes/stats_entity_name.csv",
+                              "entity_name",
+                              smoothing=5, test=False)
 
-tmt.sub_volume_analysis("http://address_of_hosted_zarr_segmentation_mask",
-                    "http://address_of_hosted_raw_volume",
-                    ome_xml_path="http://address_of_hosted_ome_xml_file",
-                    csv_out="/path_to_output/meshes/stats_entity_name.csv", mask_generation_res='0')
+experiments.subvolume_analysis.sub_volume_analysis(
+    "http://address_of_hosted_zarr_segmentation_mask",
+    "http://address_of_hosted_raw_volume",
+    ome_xml_path="http://address_of_hosted_ome_xml_file",
+    csv_out="/path_to_output/meshes/stats_entity_name.csv", mask_generation_res='0')
 
 ```
 
