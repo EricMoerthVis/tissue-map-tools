@@ -15,10 +15,10 @@ precomputed_path = out_path / "gloms_precomputed"
 URL = "https://s3.embl.de/spatialdata/raw_data/20_1_gloms.zip"
 CHECKSUM_DOWNLOAD = "7857a41d9d4d2914353c9ad0f4ea4ede"
 CHECKSUM_UNZIPPED = "927146f7a8cbfcbf9de047a6e1e71226"
+download_path = out_path / Path(URL).name
 unzipped_path = out_path / Path(URL).stem
 
 ##
-download_path = out_path / Path(URL).name
 if (
     not download_path.exists()
     or CHECKSUM_DOWNLOAD != hashlib.md5(download_path.read_bytes()).hexdigest()
