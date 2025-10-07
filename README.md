@@ -6,41 +6,36 @@
     <span>a python toolkit to create 3D Tissue Maps</span>
 </p>
 
-**tissue-map-tools** is a python toolkit to create scalable 3D Tissue Maps from 3D OME-NGFF Segmentation Masks
+🚧The library is still under development, breaking changes may occur! 🚧
 
-- **interactive** users can view results of the toolkit using [Vitessce](https://vitessce.io)
-- **fast** ⚡ building upon scalable and adaptive data formats like OME-NGFF the mesh creation is fast and reliable
-- **adaptive** users can adapt parameters like the smoothing factor to delover visual pleasing and biological meaningful results
-- **reproducible** Our pipeline is fully deterministic delivering the same results for every run
+`tissue-map-tools` is a python toolkit to create scalable 3D Tissue Maps from 3D OME-NGFF volumes and segmentation masks, and 3D SpatialData objects.
 
-## install
+- **Fast** ⚡, building upon scalable and adaptive data formats like OME-NGFF and the Neuroglancer Precomputed Format, the mesh representation is fast and reliable.
+- **Interactive**, users can view results of the toolkit from the browser using [Vitessce](https://vitessce.io).
+- **Adaptive**, users can adapt parameters like the sharding, chunking and spatial indexing factors to their needs.
+- **Reproducible**, our pipeline is fully deterministic delivering the same results for every run.
+
+## Contact us
+
+Feedback or collaborations are very welcome! Please open a GitHub issue or contact us via direct message in the [scverse Zulip](https://scverse.zulipchat.com/).
+
+## Install
 
 ```sh
 pip install tissue-map-tools
 ```
 
-## usage
+## Usage
 
-```python
-import experiments.mesh_operations
-import experiments.subvolume_analysis
-import tissue_map_tools as tmt
+Please see the `examples` folder.
 
-experiments.mesher.get_meshes("http://address_of_hosted_zarr_segmentation_mask",
-                              "/path_to_output/meshes",
-                              "/path_to_output/meshes/stats_entity_name.csv",
-                              "entity_name",
-                              smoothing=5, test=False)
+## License
 
-experiments.subvolume_analysis.sub_volume_analysis(
-    "http://address_of_hosted_zarr_segmentation_mask",
-    "http://address_of_hosted_raw_volume",
-    ome_xml_path="http://address_of_hosted_ome_xml_file",
-    csv_out="/path_to_output/meshes/stats_entity_name.csv", mask_generation_res='0')
+The project is licensed under BSD 3-Clause License. Please note that one of the optional dependencies, `igneous-pipeline`, is licensed under GPL-3.0. This implies that if you use `igneous-pipeline` as part of your workflow, you are required to comply with both the terms of the BSD 3-Clause License and the GPL-3.0 license.
 
-```
+The code from `igneous-pipeline` is used for certain meshing operations and exposed in a detached module `igneous_converter`. If GPL-3.0 is not compatible with your use case, you can still use the rest of the `tissue-map-tools` package without any restrictions, and replace the meshing functionality with your own implementation.
 
-## development
+## Development
 
 Editable install
 
