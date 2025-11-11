@@ -19,7 +19,7 @@ dependencies = [
     "jupyterlab>=3",
     "meshio>=5.3.5",
     "ome-types>=0.6.0",
-    "ome-zarr==0.10.3",
+    "ome-zarr>=0.10.3",
     "open3d>=0.19.0",
     "pymeshfix>=0.17.0",
     "pyvista[all,trame]>=0.44.2",
