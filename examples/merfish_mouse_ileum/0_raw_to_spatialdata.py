@@ -417,6 +417,8 @@ def match_cells_iomin(
     return matched_indices
 
 
+# process_pseudo3D_shapes() and match_cells_iomin() are contributed from Karen Herreman
+# and Quentin Blampey during the scverse <> owkin hackathon
 def process_pseudo3D_shapes(
     gdf: GeoDataFrame, threshold: float = 0.3, cell_column: str = "cell_id"
 ) -> GeoDataFrame:
